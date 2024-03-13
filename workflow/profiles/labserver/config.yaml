@@ -1,0 +1,13 @@
+snakefile: "../Snakefile"
+cores: 30
+show-failed-logs: True
+keep-going: True
+keep-incomplete: True
+rerun-incomplete: True
+printshellcmds: False
+keep-remote: True
+use-conda: True
+use-singularity: True
+
+# When running on Kubernetes
+jobs: 256       

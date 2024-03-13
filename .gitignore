@@ -1,0 +1,11 @@
+rawdata
+procdata
+metadata/*
+results
+.snakemake/
+logs/
+sandbox
+*.RData
+.RDataTmp
+.cache
+rdata_files

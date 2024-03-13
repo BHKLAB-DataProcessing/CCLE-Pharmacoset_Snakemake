@@ -1,0 +1,44 @@
+name: DATASET_NAME
+description: TODO::(add description)
+
+url: https://sites.broadinstitute.org/ccle/
+# version: 2019
+
+directories:
+  rawdata: rawdata                      # Directory for raw data
+  procdata: procdata                    # Directory for processed data
+  metadata: metadata                    # Directory for metadata
+  results: results                      # Directory for results
+  logs: logs                            # Directory for logs
+
+
+# Configure Data URLs
+metadata:
+  sampleAnnotation: https://data.broadinstitute.org/ccle/Cell_lines_annotations_20181226.txt
+  treatmentAnnotation: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_NP24.2009_profiling_2012.02.20.csv
+  referenceGenome:
+    description: Gene definitions (GENCODE19, GTEx7)
+    species: homo_sapiens
+    # release: 19
+    build: GRCh37
+
+treatmentResponse:
+  date: '2015-02-24'
+  rawdata:
+    description: "Dose response data"
+    url: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_NP24.2009_Drug_data_2015.02.24.csv
+  processed:
+    description: TODO::(add description)
+    url: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_GNF_data_090613.xls
+
+molecularProfiles:
+  expression: # to name rnaseq
+    rsem-genes_tpm: 
+      description: RNA-seq gene expression data. TPM values are log2 transformed.
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz
+    rsem-transcripts_tpm: 
+      description: TODO::(add description)
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt.gz
+    genes_counts: 
+      description: TODO::(add description)
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_counts_20180929.gct.gz
