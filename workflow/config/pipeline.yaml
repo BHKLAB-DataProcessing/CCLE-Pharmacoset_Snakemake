@@ -11,16 +11,21 @@ directories:
   results: results                      # Directory for results
   logs: logs                            # Directory for logs
 
+containers:
+  annotationGx: "docker://bhklab/annotationgx-r:0.0.0.9080"
 
 # Configure Data URLs
 metadata:
   sampleAnnotation: https://data.broadinstitute.org/ccle/Cell_lines_annotations_20181226.txt
   treatmentAnnotation: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_NP24.2009_profiling_2012.02.20.csv
   referenceGenome:
-    description: Gene definitions (GENCODE19, GTEx7)
+    description: 
+      Gene definitions (GENCODE19, GTEx7). URL is the file provided by the Broad Institute.
+      However, gene annotation files used for molecularProfiles are downloaded from the GENCODE website.
     species: homo_sapiens
-    # release: 19
+    release: 19
     build: GRCh37
+    url: https://data.broadinstitute.org/ccle/gencode.v19.genes.v7_model.patched_contigs.gtf.gz
 
 treatmentResponse:
   date: '2015-02-24'
@@ -28,11 +33,11 @@ treatmentResponse:
     description: "Dose response data"
     url: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_NP24.2009_Drug_data_2015.02.24.csv
   processed:
-    description: TODO::(add description)
+    description: UNUSED FOR NOW.
     url: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_GNF_data_090613.xls
 
 molecularProfiles:
-  expression: # to name rnaseq
+  rnaseq: # to name rnaseq
     rsem-genes_tpm: 
       description: RNA-seq gene expression data. TPM values are log2 transformed.
       url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz
@@ -42,3 +47,6 @@ molecularProfiles:
     genes_counts: 
       description: TODO::(add description)
       url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_counts_20180929.gct.gz
+    genes_rpkm:
+      description: TODO::(add description)
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_rpkm_20180929.gct.gz

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 configfile: "workflow/config/pipeline.yaml"
-conda: "workflow/envs/snakemake.yaml"
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
 metadata = Path(config["directories"]["metadata"])

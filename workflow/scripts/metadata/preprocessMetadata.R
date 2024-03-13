@@ -16,6 +16,7 @@ if(exists("snakemake")){
 }
 
 library(data.table)
+snakemake@source("cleanCharacterStrings.R")
 
 ## 0. read annotation data 
 ## -------------------------------
@@ -31,7 +32,7 @@ treatmentDT <- data.table::fread(
 sampleDT <- 
     sampleDT[,
         .(
-            CCLE.sampleID = `CCLE_ID`,
+            CCLE.sampleid = `CCLE_ID`,
             CCLE.name = `Name`,
             CCLE.depMapID = `depMapID`,
             CCLE.site_Primary = `Site_Primary`,
@@ -54,21 +55,33 @@ sampleDT <-
 ## 2.0 clean treatment annotation data
 ## -------------------------------
 # update column names to safe names
-treatmentDT <-
+treatmentMetadata <-
     treatmentDT[,
-        .(  CCLE.treatmentID = `Compound (code or generic name)`,
+        .(  CCLE.raw_treatmentid = `Compound (code or generic name)`,
             CCLE.target = `Target(s)`,
             CCLE.mechanismOfAction = `Mechanism of action`,
             CCLE.class = `Class`,
             CCLE.highestClinicalTrialPhase = `Highest Phase`,
             CCLE.treatmentSourceOrganization = `Organization`)]
 
+treatmentMetadata[, CCLE.treatmentid := cleanCharacterStrings(CCLE.raw_treatmentid)]
+
 ## 3.0 write out cleaned data
 ## -------------------------------
 
 message("Saving sampleMetadata to ", OUTPUT[["sampleMetadata"]])
-data.table::fwrite(sampleDT, file = OUTPUT[["sampleMetadata"]])
+data.table::fwrite(
+    sampleDT, 
+    file = OUTPUT[["sampleMetadata"]],
+    quote = FALSE,
+    sep = "\t"
+    )
 
 message("Saving treatmentMetadata to ", OUTPUT[["treatmentMetadata"]])
-data.table::fwrite(treatmentDT, file = OUTPUT[["treatmentMetadata"]])
+data.table::fwrite(
+    treatmentMetadata, 
+    file = OUTPUT[["treatmentMetadata"]],
+    quote = FALSE,
+    sep = "\t"
+    )
 
