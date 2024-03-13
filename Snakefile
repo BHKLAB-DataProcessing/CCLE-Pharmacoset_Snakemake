@@ -10,4 +10,9 @@ include: "workflow/rules/downloadGENCODE.smk"
 include: "workflow/rules/treatmentResponse.smk"
 include: "workflow/rules/rnaseq.smk"
 
+# rules complete:
+# make_RNASEQ_SE
+# annotate_treatmentMetadata
+# build_treatmentResponseExperiment
 
+# snakemake --profile workflow/profiles/labserver  make_RNASEQ_SE build_treatmentResponseExperiment annotate_treatmentMetadata

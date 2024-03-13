@@ -14,10 +14,10 @@ if(exists("snakemake")){
         file.path("rdata_files", paste0(snakemake@rule, ".RData"))
     )
 }
-load("rdata_files/map_treatments_to_PubChemCID.RData")
+load("rdata_files/annotate_treatmentMetadata.RData")
 
 library(data.table)
-message("Starting map_treatments_to_PubChemCID.R")
+message("Starting annotate_treatmentMetadata.R")
 
 # 1.0 Read Input Data
 # -------------------
@@ -61,21 +61,52 @@ names(treatment_annotations) <- paste0("pubchem.", names(treatment_annotations))
 message("\n\nAnnotating with external annotations")
 annotations <- c('ChEMBL ID', 'NSC Number', 'Drug Induced Liver Injury', 'CAS', 'ATC Code')
 
-for (i in seq_along(annotations)) {
+lapply(seq_along(annotations), function(i) {
     message(paste0("Annotating with ", annotations[i]))
     treatment_annotations[
         !is.na(pubchem.CID), 
         paste0("pubchem.", annotations[i]) := AnnotationGx::annotatePubchemCompound(pubchem.CID, heading = annotations[i])
         ]
-}
+})
 
 # gsub every column name to remove the " " 
 colnames(treatment_annotations) <- gsub(" ", "_", colnames(treatment_annotations))
 
-lapply(treatment_annotations$pubchem.CID[20], function(x) AnnotationGx::annotatePubchemCompound(x, heading = "CAS"))
+treatmentMetadata <- merge(
+    treatmentMetadata, 
+    treatment_annotations, 
+    by.x = "CCLE.treatmentid", 
+    by.y = "pubchem.name", all.x = TRUE)
 
-AnnotationGx::annotatePubchemCompound(
-    treatment_annotations$pubchem.CID[20], 
-    heading = "CAS",
-    raw = TRUE)
 
+treatmentMetadata[,pubchem.ChEMBL_ID := data.table::tstrsplit(pubchem.ChEMBL_ID, ";", fixed = TRUE)[1]]
+
+chembl_mechanisms_dt <- treatmentMetadata[, AnnotationGx::getChemblMechanism(pubchem.ChEMBL_ID)]
+
+chembl_cols_of_interest <- c(
+        "molecule_chembl_id",  "parent_molecule_chembl_id", "target_chembl_id", "record_id", 
+        "mechanism_of_action", "mechanism_comment", "action_type"
+    )
+
+treatmentMetadata <- merge(
+    treatmentMetadata, 
+    chembl_mechanisms_dt[, ..chembl_cols_of_interest], 
+    by.x = "pubchem.ChEMBL_ID", 
+    by.y = "molecule_chembl_id", all.x = TRUE)
+
+data.table::setnames(
+    treatmentMetadata, 
+    chembl_cols_of_interest, 
+    paste0("chembl.", chembl_cols_of_interest), 
+    skip_absent = TRUE)
+
+# 6.0 Write out cleaned data
+# --------------------------
+message("\n\nWriting out cleaned data to ", OUTPUT$treatmentMetadata)
+
+data.table::fwrite(
+    treatmentMetadata, 
+    file = OUTPUT$treatmentMetadata,
+    quote = FALSE,
+    sep = "\t"
+)

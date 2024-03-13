@@ -64,17 +64,17 @@ rule downloadGenomeFiles:
 ################################################################################################
 
 
-rule map_treatments_to_PubChemCID:
+rule annotate_treatmentMetadata:
     input:
         treatmentMetadata = procdata / metadata / "preprocessed_treatmentMetadata.tsv",
     output:
-        treatment_CIDS = procdata / metadata / "annotations" / "CCLE_treatmentMetadata_mapped_PubChem.tsv",
+        treatmentMetadata = procdata / metadata / "annotations" / "CCLE_treatmentMetadata_annotated.tsv",
     log:
-        logs / metadata / "map_treatments_to_PubChemCID.log"
+        logs / metadata / "annotate_treatmentMetadata.log"
     threads:
         8
-    container: 
-        annotationGx_docker
+    # container: 
+        # annotationGx_docker
     script:
-        scripts / metadata / "map_treatments_to_PubChemCID.R"
+        scripts / metadata / "annotate_treatmentMetadata.R"
 
