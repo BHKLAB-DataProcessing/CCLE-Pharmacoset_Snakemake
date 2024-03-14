@@ -50,3 +50,20 @@ molecularProfiles:
     genes_rpkm:
       description: TODO::(add description)
       url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_rpkm_20180929.gct.gz
+
+  mutation:
+    oncomapAssay: 
+      description: TODO::(add description)
+      url: "https://data.broadinstitute.org/ccle_legacy_data/oncomap_mutations/CCLE_Oncomap3_Assays_2012-04-09.csv"
+    oncomap: 
+      description: TODO::(add description)
+      url: "https://data.broadinstitute.org/ccle_legacy_data/oncomap_mutations/CCLE_Oncomap3_2012-04-09.maf"
+    hybridCapture:
+      description: TODO::(add description)
+      url: "https://data.broadinstitute.org/ccle_legacy_data/hybrid_capture_sequencing/CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf"
+
+  cnv:
+    copynumber_byGene: 
+      description: TODO::(add description)
+      url: "https://data.broadinstitute.org/ccle_legacy_data/dna_copy_number/CCLE_copynumber_byGene_2013-12-03.txt.gz"
+  

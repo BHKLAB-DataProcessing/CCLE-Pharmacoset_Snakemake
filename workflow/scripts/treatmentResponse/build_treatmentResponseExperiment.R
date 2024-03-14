@@ -14,7 +14,7 @@ if(exists("snakemake")){
         file.path("rdata_files/", paste0(snakemake@rule, ".RData"))
     )
 }
-
+snakemake@source("../metadata/cleanCharacterStrings.R")
 # 0.1 Startup 
 # -----------
 # load data.table, suppressPackageStartupMessages unless there is an error
@@ -102,8 +102,8 @@ raw <- data.table::melt(raw,
 )
 
 raw <- raw[!is.na(dose),][, Dose := NULL][]
-
-
+raw[, treatmentid := cleanCharacterStrings(treatmentid)]
+published_profiles[, treatmentid := cleanCharacterStrings(treatmentid)]
 # CONSTRUCT THE TREDataMapper OBJECT
 tdm <- CoreGx::TREDataMapper(rawdata=raw)
 

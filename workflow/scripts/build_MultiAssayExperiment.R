@@ -14,7 +14,6 @@ if(exists("snakemake")){
         file.path("rdata_files/", paste0(snakemake@rule, ".RData"))
     )
 }
-
 load("rdata_files/build_MultiAssayExperiment.RData")
 
 
@@ -22,9 +21,6 @@ load("rdata_files/build_MultiAssayExperiment.RData")
 # ----------------
 message(paste("Loading: ", INPUT$sampleMetadata, sep = "\n\t"))
 sampleMetadata <- data.table::fread(INPUT$sampleMetadata)
-
-message(paste("Loading: ", INPUT$metadata_list, sep = "\n\t"))
-metadata_list <- lapply(INPUT$metadata_list, jsonlite::fromJSON) 
 
 # Read in the summarized experiments
 # ----------------------------------
@@ -41,7 +37,19 @@ se_sampleNames <- lapply(
     unlist() |> 
     unique()
     
-stopifnot(all(se_sampleNames %in% sampleMetadata$CCLE.sampleid))
+if(!all(se_sampleNames %in% sampleMetadata$CCLE.sampleid)){
+    print("Not all sample names are in the sample metadata")
+
+    message("Removing the following sample names from the summarized experiments:\n\t")
+    missing <- setdiff(se_sampleNames, sampleMetadata$CCLE.sampleid)
+    message("\t",paste(missing, collapse = "\n\t"))
+
+    se_list <- lapply(se_list, function(x){
+        x[,!colnames(x) %in% missing]
+    })
+}
+
+
 data.table::setkeyv(sampleMetadata, "CCLE.sampleid")
 
 sampleMetadata <- sampleMetadata[se_sampleNames,] |> unique()
@@ -85,6 +93,18 @@ sampleMapList <- lapply(summarizedExperimentLists, function(se){
 })
 names(sampleMapList) <- names(ExpList)
 message(paste("Sample map list:", capture.output(str(sampleMapList)), sep = "\n\t"))
+
+# Metadata List
+# go through each experiment, extract the metadata and add it to a list
+metadata_list <- lapply(summarizedExperimentLists, function(se){
+    metadata_ <- slot(se, "metadata")
+    if(metadata_$annotation == "rnaseq"){
+        metadata_ <- metadata_[-which(names(metadata_) == "sessionInfo")]
+    }
+    metadata_
+})
+
+
 
 mae <- MultiAssayExperiment::MultiAssayExperiment(
     experiments = ExpList,

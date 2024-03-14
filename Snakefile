@@ -5,10 +5,13 @@ metadata = Path(config["directories"]["metadata"])
 results = Path(config["directories"]["results"])
 logs = Path(config["directories"]["logs"])
 scriptDir = Path("workflow/scripts")
+
 include: "workflow/rules/metadata.smk"
 include: "workflow/rules/downloadGENCODE.smk"
 include: "workflow/rules/treatmentResponse.smk"
 include: "workflow/rules/rnaseq.smk"
+include: "workflow/rules/cnv.smk"
+include: "workflow/rules/mutation.smk"
 
 # rules complete:
 # make_RNASEQ_SE
@@ -24,19 +27,25 @@ snakemake \
 
 rule all:
     input:
-        results / "CCLE_PSet.RDS",
+        pset = results / "CCLE_PSet.RDS",
+    output:
+        export_dir = directory("results/exports")
+    script:
+        scriptDir / "ExportPSet.R"
+
 
 rule build_MultiAssayExperiment:
     input:
         summarizedExperiment_lists = [
                 rules.make_RNASEQ_SE.output.rse_list,
-            ],
-        metadata_list = [
-            rules.make_RNASEQ_SE.output.metadata,
+                rules.make_CNV_SE.output.CNV_SE,
+                rules.make_Mutation_SE.output.processedMutationSE,
             ],
         sampleMetadata = rules.annotate_sampleMetadata.output.sampleMetadata,
     output:
         mae = results / "CCLE_MultiAssayExperiment.RDS"
+    log:
+        logs / "build_MultiAssayExperiment.log"
     script:
         scriptDir / "build_MultiAssayExperiment.R"
 
@@ -48,7 +57,8 @@ rule build_PharmacoSet:
         sampleMetadata = rules.annotate_sampleMetadata.output.sampleMetadata,
     output:
         pset = results / "CCLE_PSet.RDS"
+    log:
+        logs / "build_PharmacoSet.log"
     script:
         scriptDir / "build_PharmacoSet.R"
-
 
