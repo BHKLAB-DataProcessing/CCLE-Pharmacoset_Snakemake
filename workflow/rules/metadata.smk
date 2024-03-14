@@ -73,8 +73,22 @@ rule annotate_treatmentMetadata:
         logs / metadata / "annotate_treatmentMetadata.log"
     threads:
         8
-    # container: 
-        # annotationGx_docker
     script:
         scripts / metadata / "annotate_treatmentMetadata.R"
 
+
+################################################################################################
+# SAMPLE METADATA RULES
+################################################################################################
+
+rule annotate_sampleMetadata:
+    input:
+        sampleMetadata = procdata / metadata / "preprocessed_sampleMetadata.tsv",
+    output:
+        sampleMetadata = procdata / metadata / "annotations" / "CCLE_sampleMetadata_annotated.tsv",
+    log:
+        logs / metadata / "annotate_sampleMetadata.log"
+    threads:
+        8
+    script:
+        scripts / metadata / "annotate_sampleMetadata.R"
