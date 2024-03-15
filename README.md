@@ -1,23 +1,29 @@
 # This is the repository for the CCLE pipeline
 
-This pipeline is considered `End-to-End` and will take you from downloading 
-the raw data needed to a fully annotated dataset.
+This pipeline is considered `End-to-End` and will take you from downloading the raw data needed to a fully annotated dataset.
 
-# REPORT
+# STATUS REPORT
+
+![Status](./resources/status.png)
+
 The pipeline report can also [be viewed here](https://storage.cloud.google.com/orcestradata/CCLE-Pharmacoset_Snakemake/report.html?authuser=1)
 
 # Requirements
 - [Snakemake](https://snakemake.readthedocs.io/en/stable/)
 
 
+Ensure you have conda installed. If not, install [miniconda](https://docs.conda.io/en/latest/miniconda.html).
+Install mamba for faster package management:
 
+``` bash
+conda install mamba -n base -c conda-forge 
+```
+
+``` bash
+mamba create -n snakemake -c conda-forge -c bioconda snakemake=7.32.4
+```
 
 # So far, the following has been implemented:
-Create using 
-```bash
-snakemake -s workflow/Snakefile -F --dag | dot -Tsvg \
-> resources/dag.svg
-```
 
 ## Rulegraph 
 ``` bash
