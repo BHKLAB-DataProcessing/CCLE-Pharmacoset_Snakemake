@@ -4,7 +4,7 @@ This pipeline is considered `End-to-End` and will take you from downloading
 the raw data needed to a fully annotated dataset.
 
 # REPORT
-The pipeline report can also [be viewed here](https://https://storage.cloud.google.com/orcestradata/CCLE-Pharmacoset_Snakemake/report.html?authuser=1)
+The pipeline report can also [be viewed here](https://storage.cloud.google.com/orcestradata/CCLE-Pharmacoset_Snakemake/report.html?authuser=1)
 
 # Requirements
 - [Snakemake](https://snakemake.readthedocs.io/en/stable/)
