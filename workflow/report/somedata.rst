@@ -1,0 +1,1 @@
+Test reference  {{ snakemake.wildcards.name }}. 

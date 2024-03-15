@@ -1,3 +1,6 @@
+from pathlib import Path
+report: "workflow/report/workflow.rst"
+
 configfile: "workflow/config/pipeline.yaml"
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -13,10 +16,29 @@ include: "workflow/rules/rnaseq.smk"
 include: "workflow/rules/cnv.smk"
 include: "workflow/rules/mutation.smk"
 
-# rules complete:
-# make_RNASEQ_SE
-# annotate_treatmentMetadata
-# build_treatmentResponseExperiment
+# results/exports
+# ├── annotation.json
+# ├── curation
+# │   ├── sample.tsv
+# │   ├── tissue.tsv
+# │   └── treatment.tsv
+# ├── molecularProfiles
+# │   ├── cnv
+# │   │   └── cnv.genes.tsv
+# │   ├── molecularProfiles_metadata.json
+# │   ├── mut
+# │   │   └── mut.genes.tsv
+# │   └── rnaseq
+# │       ├── rnaseq.genes_counts.tsv
+# │       ├── rnaseq.genes_rpkm.tsv
+# │       ├── rnaseq.genes_tpm.tsv
+# │       └── rnaseq.transcripts_tpm.tsv
+# ├── sample.tsv
+# ├── treatmentResponse
+# │   ├── profiles.tsv
+# │   ├── sensitivity.tsv
+# │   └── treatmentResponse_metadata.json
+# └── treatment.tsv
 
 """
 snakemake \
@@ -27,9 +49,15 @@ snakemake \
 
 rule all:
     input:
-        pset = results / "CCLE_PSet.RDS",
+        pset = results / "CCLE_PSet.RDS"
     output:
-        export_dir = directory("results/exports")
+        export_dir = report(
+            directory("results/exports"),
+            patterns = ["{path}/{file}.{ext}"],
+            category = "PharmacoSetOutputs",
+            ),
+    log:
+        logs / "all.log"
     script:
         scriptDir / "ExportPSet.R"
 

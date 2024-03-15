@@ -9,3 +9,4 @@ sandbox
 .RDataTmp
 .cache
 rdata_files
+*.html

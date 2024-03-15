@@ -67,7 +67,6 @@ treatmentNames <- c(
 ) |> unique()
 
 
-CoreGx::rowData(tre)$treatmentid <- CoreGx::rowData(tre)[, cleanCharacterStrings(treatmentid)]
 
 data.table::setkeyv(treatmentMetadata, "CCLE.treatmentid")
 treatmentMetadata <- treatmentMetadata[!duplicated(CCLE.treatmentid),]

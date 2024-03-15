@@ -17,12 +17,20 @@ if(exists("snakemake")){
     )
 }
 load("rdata_files/ExportPSet.RData")
+suppressPackageStartupMessages(library(PharmacoGx, quietly = TRUE))
 
 # load pset
 message(paste("Loading: ", INPUT$pset, sep = "\n\t"))
 pset <- readRDS(INPUT$pset)
 
 export_dir <- OUTPUT$export_dir 
+
+############################################################################
+# PARSING THE SLOTS OF THE PHARMACOSET OBJECT
+############################################################################
+message("\nParsing the slots of the PharmacoSet object")
+message(show(pset))
+message("Slots:\n\t", paste(slotNames(pset), collapse = ",\n\t"))
 # PSet
 #   treatment `data.frame`: Treatment metadata
 #   sample `data.frame`: Sample metadata
@@ -30,6 +38,7 @@ export_dir <- OUTPUT$export_dir
 #   treatmentResponse `TreatmentResponseExperiment`: Treatment response
 #   annotation `list`: 
 #   curation `list`:
+
 ############################################################################
 # annotation
 ############################################################################
@@ -111,7 +120,7 @@ dir.create(dirname(path_), recursive = TRUE, showWarnings = FALSE)
 jsonlite::write_json(molecularProfiles_metadata, path_, pretty = TRUE)
 
 
-assay_list <- lapply(names(molecularProfiles), function(x){
+assay_list <- BiocParallel::bplapply(names(molecularProfiles), function(x){
     se <- molecularProfiles[[x]]
     subdir <- se@metadata$annotation
     df <- SummarizedExperiment::assay(se, SummarizedExperiment::assayNames(se))
@@ -119,14 +128,15 @@ assay_list <- lapply(names(molecularProfiles), function(x){
     message(paste("Writing: ", path_, sep = "\n\t"))
     dir.create(dirname(path_), recursive = TRUE, showWarnings = FALSE)
     write.table(
-        df,
+        df[1:10,],
         file = path_,
         sep = "\t",
         quote = FALSE,
         row.names = TRUE
     )
-    return(TRUE)
-}) |> unlist() |> all() |> stopifnot()
+    return(TRUE)},
+    BPPARAM = BiocParallel::MulticoreParam(workers = THREADS)
+) |> unlist() |> all() |> stopifnot()
 
 
 ############################################################################
@@ -143,7 +153,7 @@ dir.create(dirname(path_), recursive = TRUE, showWarnings = FALSE)
 jsonlite::write_json(treatmentResponse_metadata, path_, pretty = TRUE)
 
 tr_assays <- CoreGx::assayNames(treatmentResponse)
-lapply(tr_assays[1], function(x){
+lapply(tr_assays, function(x){
     df <- CoreGx::assay(treatmentResponse, x)
     path_ <- file.path(export_dir, "treatmentResponse", paste0(x, ".tsv"))
     message(paste("Writing: ", path_, sep = "\n\t"))
@@ -153,3 +163,21 @@ lapply(tr_assays[1], function(x){
 }) |> unlist() |> all() |> stopifnot()
 
 
+message("\n\nDone!")
+
+# Load the ggplot2 library
+library(ggplot2)
+
+# Create a simple data frame
+data <- data.frame(
+  x = 1:10,
+  y = 1:10
+)
+
+# Create the plot
+my_plot <- ggplot(data, aes(x = x, y = y)) +
+  geom_point() +  # Add points
+  geom_line()     # Add lines
+
+# Save the plot to a file (change "plot.png" to your desired filename and extension)
+ggsave("results/exports/plot.png", plot = my_plot, width = 6, height = 4, dpi = 300)
