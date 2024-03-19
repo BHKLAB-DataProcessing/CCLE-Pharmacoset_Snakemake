@@ -21,9 +21,9 @@
 <text text-anchor="start" x="3148.5" y="-29.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="3218.5" y="-29.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="3095.5" y="-10" font-family="monospace" font-size="10.00">results/exports</text>
-<polygon fill="#57d9b5" stroke="#57d9b5" points="3089.5,-84 3089.5,-84 3229.5,-84 3229.5,-84 3089.5,-84"/>
-<polygon fill="#57d9b5" stroke="#57d9b5" points="3089.5,-44 3089.5,-44 3229.5,-44 3229.5,-44 3089.5,-44"/>
-<polygon fill="none" stroke="#57d9b5" stroke-width="2" points="3089,-1 3089,-113 3228,-113 3228,-1 3089,-1"/>
+<polygon fill="#d9b157" stroke="#d9b157" points="3089.5,-84 3089.5,-84 3229.5,-84 3229.5,-84 3089.5,-84"/>
+<polygon fill="#d9b157" stroke="#d9b157" points="3089.5,-44 3089.5,-44 3229.5,-44 3229.5,-44 3089.5,-44"/>
+<polygon fill="none" stroke="#d9b157" stroke-width="2" points="3089,-1 3089,-113 3228,-113 3228,-1 3089,-1"/>
 </g>
 <!-- 1 -->
 <g id="node2" class="node">
@@ -40,9 +40,9 @@
 <text text-anchor="start" x="3283.5" y="-179.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="3353.5" y="-179.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2960.5" y="-160" font-family="monospace" font-size="10.00">results/CCLE_PSet.RDS</text>
-<polygon fill="#57d99e" stroke="#57d99e" points="2954.5,-288 2954.5,-288 3364.5,-288 3364.5,-288 2954.5,-288"/>
-<polygon fill="#57d99e" stroke="#57d99e" points="2954.5,-194 2954.5,-194 3364.5,-194 3364.5,-194 2954.5,-194"/>
-<polygon fill="none" stroke="#57d99e" stroke-width="2" points="2954,-151 2954,-317 3363,-317 3363,-151 2954,-151"/>
+<polygon fill="#57c8d9" stroke="#57c8d9" points="2954.5,-288 2954.5,-288 3364.5,-288 3364.5,-288 2954.5,-288"/>
+<polygon fill="#57c8d9" stroke="#57c8d9" points="2954.5,-194 2954.5,-194 3364.5,-194 3364.5,-194 2954.5,-194"/>
+<polygon fill="none" stroke="#57c8d9" stroke-width="2" points="2954,-151 2954,-317 3363,-317 3363,-151 2954,-151"/>
 </g>
 <!-- 1&#45;&gt;0 -->
 <g id="edge1" class="edge">
@@ -65,12 +65,12 @@
 <text text-anchor="start" x="2814.5" y="-383.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="2884.5" y="-383.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2509.5" y="-364" font-family="monospace" font-size="10.00">results/CCLE_MultiAssayExperiment.RDS</text>
-<polygon fill="#d96e57" stroke="#d96e57" points="2503.5,-492 2503.5,-492 2895.5,-492 2895.5,-492 2503.5,-492"/>
-<polygon fill="#d96e57" stroke="#d96e57" points="2503.5,-398 2503.5,-398 2895.5,-398 2895.5,-398 2503.5,-398"/>
-<polygon fill="none" stroke="#d96e57" stroke-width="2" points="2503,-355 2503,-521 2894,-521 2894,-355 2503,-355"/>
+<polygon fill="#57d9bc" stroke="#57d9bc" points="2503.5,-492 2503.5,-492 2895.5,-492 2895.5,-492 2503.5,-492"/>
+<polygon fill="#57d9bc" stroke="#57d9bc" points="2503.5,-398 2503.5,-398 2895.5,-398 2895.5,-398 2503.5,-398"/>
+<polygon fill="none" stroke="#57d9bc" stroke-width="2" points="2503,-355 2503,-521 2894,-521 2894,-355 2503,-355"/>
 </g>
 <!-- 2&#45;&gt;1 -->
-<g id="edge2" class="edge">
+<g id="edge3" class="edge">
 <title>2&#45;&gt;1</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M2887.59,-353.96C2911.54,-343.45 2936.1,-332.66 2960.19,-322.08"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="2961.65,-325.26 2969.4,-318.04 2958.84,-318.86 2961.65,-325.26"/>
@@ -97,9 +97,9 @@
 <text text-anchor="start" x="829.5" y="-604" font-family="monospace" font-size="10.00">procdata/rnaseq/CCLE_RNAseq_genes_tpm.tsv</text>
 <text text-anchor="start" x="829.5" y="-586" font-family="monospace" font-size="10.00">procdata/rnaseq/CCLE_RNAseq_metadata.json</text>
 <text text-anchor="start" x="829.5" y="-568" font-family="monospace" font-size="10.00">procdata/rnaseq/CCLE_RNAseq_transcripts_tpm.tsv</text>
-<polygon fill="#57b5d9" stroke="#57b5d9" points="823.5,-822 823.5,-822 1281.5,-822 1281.5,-822 823.5,-822"/>
-<polygon fill="#57b5d9" stroke="#57b5d9" points="823.5,-692 823.5,-692 1281.5,-692 1281.5,-692 823.5,-692"/>
-<polygon fill="none" stroke="#57b5d9" stroke-width="2" points="823,-559 823,-851 1280,-851 1280,-559 823,-559"/>
+<polygon fill="#d95757" stroke="#d95757" points="823.5,-822 823.5,-822 1281.5,-822 1281.5,-822 823.5,-822"/>
+<polygon fill="#d95757" stroke="#d95757" points="823.5,-692 823.5,-692 1281.5,-692 1281.5,-692 823.5,-692"/>
+<polygon fill="none" stroke="#d95757" stroke-width="2" points="823,-559 823,-851 1280,-851 1280,-559 823,-559"/>
 </g>
 <!-- 3&#45;&gt;2 -->
 <g id="edge8" class="edge">
@@ -125,12 +125,12 @@
 <text text-anchor="start" x="1069.5" y="-934" font-family="monospace" font-size="10.00">rawdata/rnaseq/CCLE_RNAseq_genes_rpkm_20180929.gct.gz</text>
 <text text-anchor="start" x="1069.5" y="-916" font-family="monospace" font-size="10.00">rawdata/rnaseq/CCLE_RNAseq_rsem_genes_tpm_20180929.txt</text>
 <text text-anchor="start" x="1069.5" y="-898" font-family="monospace" font-size="10.00">rawdata/rnaseq/CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt</text>
-<polygon fill="#b5d957" stroke="#b5d957" points="1063.5,-1080 1063.5,-1080 1683.5,-1080 1683.5,-1080 1063.5,-1080"/>
-<polygon fill="#b5d957" stroke="#b5d957" points="1063.5,-986 1063.5,-986 1683.5,-986 1683.5,-986 1063.5,-986"/>
-<polygon fill="none" stroke="#b5d957" stroke-width="2" points="1063,-889 1063,-1109 1682,-1109 1682,-889 1063,-889"/>
+<polygon fill="#579bd9" stroke="#579bd9" points="1063.5,-1080 1063.5,-1080 1683.5,-1080 1683.5,-1080 1063.5,-1080"/>
+<polygon fill="#579bd9" stroke="#579bd9" points="1063.5,-986 1063.5,-986 1683.5,-986 1683.5,-986 1063.5,-986"/>
+<polygon fill="none" stroke="#579bd9" stroke-width="2" points="1063,-889 1063,-1109 1682,-1109 1682,-889 1063,-889"/>
 </g>
 <!-- 4&#45;&gt;3 -->
-<g id="edge10" class="edge">
+<g id="edge12" class="edge">
 <title>4&#45;&gt;3</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M1251.14,-887.61C1240.86,-878.25 1230.34,-868.69 1219.78,-859.08"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="1221.84,-856.22 1212.09,-852.08 1217.13,-861.4 1221.84,-856.22"/>
@@ -144,12 +144,12 @@
 <text text-anchor="start" x="318.5" y="-982.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="388.5" y="-982.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="7.5" y="-963" font-family="monospace" font-size="10.00">{refDir}/{species}/{ref_build}_v{gencode_release}/annotation.gtf</text>
-<polygon fill="#5786d9" stroke="#5786d9" points="1.5,-1015 1.5,-1015 399.5,-1015 399.5,-1015 1.5,-1015"/>
-<polygon fill="#5786d9" stroke="#5786d9" points="1.5,-997 1.5,-997 399.5,-997 399.5,-997 1.5,-997"/>
-<polygon fill="none" stroke="#5786d9" stroke-width="2" points="1,-954 1,-1044 398,-1044 398,-954 1,-954"/>
+<polygon fill="#d98457" stroke="#d98457" points="1.5,-1015 1.5,-1015 399.5,-1015 399.5,-1015 1.5,-1015"/>
+<polygon fill="#d98457" stroke="#d98457" points="1.5,-997 1.5,-997 399.5,-997 399.5,-997 1.5,-997"/>
+<polygon fill="none" stroke="#d98457" stroke-width="2" points="1,-954 1,-1044 398,-1044 398,-954 1,-954"/>
 </g>
 <!-- 5&#45;&gt;3 -->
-<g id="edge12" class="edge">
+<g id="edge10" class="edge">
 <title>5&#45;&gt;3</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M275.68,-952.74C314.26,-931.11 362.37,-906.07 407.5,-888 537.98,-835.74 688.95,-792.23 811.91,-760.87"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="813.01,-764.2 821.84,-758.35 811.28,-757.42 813.01,-764.2"/>
@@ -166,9 +166,9 @@
 <text text-anchor="start" x="963.5" y="-971.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="1033.5" y="-971.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="424.5" y="-952" font-family="monospace" font-size="10.00">metadata/referenceGenome/gencode.v19.genes.v7_model.patched_contigs.gtf.gz</text>
-<polygon fill="#d99e57" stroke="#d99e57" points="418.5,-1026 418.5,-1026 1044.5,-1026 1044.5,-1026 418.5,-1026"/>
-<polygon fill="#d99e57" stroke="#d99e57" points="418.5,-986 418.5,-986 1044.5,-986 1044.5,-986 418.5,-986"/>
-<polygon fill="none" stroke="#d99e57" stroke-width="2" points="418,-943 418,-1055 1043,-1055 1043,-943 418,-943"/>
+<polygon fill="#576dd9" stroke="#576dd9" points="418.5,-1026 418.5,-1026 1044.5,-1026 1044.5,-1026 418.5,-1026"/>
+<polygon fill="#576dd9" stroke="#576dd9" points="418.5,-986 418.5,-986 1044.5,-986 1044.5,-986 418.5,-986"/>
+<polygon fill="none" stroke="#576dd9" stroke-width="2" points="418,-943 418,-1055 1043,-1055 1043,-943 418,-943"/>
 </g>
 <!-- 6&#45;&gt;3 -->
 <g id="edge11" class="edge">
@@ -188,9 +188,9 @@
 <text text-anchor="start" x="2305.5" y="-677.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="2375.5" y="-677.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2084.5" y="-658" font-family="monospace" font-size="10.00">procdata/cnv/CNV_SE.RDS</text>
-<polygon fill="#9ed957" stroke="#9ed957" points="2078.5,-732 2078.5,-732 2386.5,-732 2386.5,-732 2078.5,-732"/>
-<polygon fill="#9ed957" stroke="#9ed957" points="2078.5,-692 2078.5,-692 2386.5,-692 2386.5,-692 2078.5,-692"/>
-<polygon fill="none" stroke="#9ed957" stroke-width="2" points="2078,-649 2078,-761 2385,-761 2385,-649 2078,-649"/>
+<polygon fill="#8fd957" stroke="#8fd957" points="2078.5,-732 2078.5,-732 2386.5,-732 2386.5,-732 2078.5,-732"/>
+<polygon fill="#8fd957" stroke="#8fd957" points="2078.5,-692 2078.5,-692 2386.5,-692 2386.5,-692 2078.5,-692"/>
+<polygon fill="none" stroke="#8fd957" stroke-width="2" points="2078,-649 2078,-761 2385,-761 2385,-649 2078,-649"/>
 </g>
 <!-- 7&#45;&gt;2 -->
 <g id="edge7" class="edge">
@@ -210,9 +210,9 @@
 <text text-anchor="start" x="2361.5" y="-971.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="2431.5" y="-971.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="1708.5" y="-952" font-family="monospace" font-size="10.00">rawdata/cnv/CCLE_copynumber_byGene_2013&#45;12&#45;03.txt</text>
-<polygon fill="#579ed9" stroke="#579ed9" points="1702.5,-1026 1702.5,-1026 2442.5,-1026 2442.5,-1026 1702.5,-1026"/>
-<polygon fill="#579ed9" stroke="#579ed9" points="1702.5,-986 1702.5,-986 2442.5,-986 2442.5,-986 1702.5,-986"/>
-<polygon fill="none" stroke="#579ed9" stroke-width="2" points="1702,-943 1702,-1055 2441,-1055 2441,-943 1702,-943"/>
+<polygon fill="#a6d957" stroke="#a6d957" points="1702.5,-1026 1702.5,-1026 2442.5,-1026 2442.5,-1026 1702.5,-1026"/>
+<polygon fill="#a6d957" stroke="#a6d957" points="1702.5,-986 1702.5,-986 2442.5,-986 2442.5,-986 1702.5,-986"/>
+<polygon fill="none" stroke="#a6d957" stroke-width="2" points="1702,-943 1702,-1055 2441,-1055 2441,-943 1702,-943"/>
 </g>
 <!-- 8&#45;&gt;7 -->
 <g id="edge13" class="edge">
@@ -232,12 +232,12 @@
 <text text-anchor="start" x="2751.5" y="-677.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="2821.5" y="-677.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2572.5" y="-658" font-family="monospace" font-size="10.00">procdata/mutation/Mutation_SE.RDS</text>
-<polygon fill="#57d957" stroke="#57d957" points="2566.5,-732 2566.5,-732 2832.5,-732 2832.5,-732 2566.5,-732"/>
-<polygon fill="#57d957" stroke="#57d957" points="2566.5,-692 2566.5,-692 2832.5,-692 2832.5,-692 2566.5,-692"/>
-<polygon fill="none" stroke="#57d957" stroke-width="2" points="2566,-649 2566,-761 2831,-761 2831,-649 2566,-649"/>
+<polygon fill="#bcd957" stroke="#bcd957" points="2566.5,-732 2566.5,-732 2832.5,-732 2832.5,-732 2566.5,-732"/>
+<polygon fill="#bcd957" stroke="#bcd957" points="2566.5,-692 2566.5,-692 2832.5,-692 2832.5,-692 2566.5,-692"/>
+<polygon fill="none" stroke="#bcd957" stroke-width="2" points="2566,-649 2566,-761 2831,-761 2831,-649 2566,-649"/>
 </g>
 <!-- 9&#45;&gt;2 -->
-<g id="edge6" class="edge">
+<g id="edge9" class="edge">
 <title>9&#45;&gt;2</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M2698.5,-647.8C2698.5,-614.26 2698.5,-570.82 2698.5,-532.26"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="2702,-532.05 2698.5,-522.05 2695,-532.05 2702,-532.05"/>
@@ -256,9 +256,9 @@
 <text text-anchor="start" x="2964.5" y="-953.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="3034.5" y="-953.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2467.5" y="-934" font-family="monospace" font-size="10.00">procdata/mutation/preprocessedMutation.RDS</text>
-<polygon fill="#d9cd57" stroke="#d9cd57" points="2461.5,-1044 2461.5,-1044 3045.5,-1044 3045.5,-1044 2461.5,-1044"/>
-<polygon fill="#d9cd57" stroke="#d9cd57" points="2461.5,-968 2461.5,-968 3045.5,-968 3045.5,-968 2461.5,-968"/>
-<polygon fill="none" stroke="#d9cd57" stroke-width="2" points="2461,-925 2461,-1073 3044,-1073 3044,-925 2461,-925"/>
+<polygon fill="#57d979" stroke="#57d979" points="2461.5,-1044 2461.5,-1044 3045.5,-1044 3045.5,-1044 2461.5,-1044"/>
+<polygon fill="#57d979" stroke="#57d979" points="2461.5,-968 2461.5,-968 3045.5,-968 3045.5,-968 2461.5,-968"/>
+<polygon fill="none" stroke="#57d979" stroke-width="2" points="2461,-925 2461,-1073 3044,-1073 3044,-925 2461,-925"/>
 </g>
 <!-- 10&#45;&gt;9 -->
 <g id="edge14" class="edge">
@@ -282,9 +282,9 @@
 <text text-anchor="start" x="1838.5" y="-1192" font-family="monospace" font-size="10.00">rawdata/mutation/CCLE_Oncomap3_2012&#45;04&#45;09.maf</text>
 <text text-anchor="start" x="1838.5" y="-1174" font-family="monospace" font-size="10.00">rawdata/mutation/CCLE_Oncomap3_Assays_2012&#45;04&#45;09.csv</text>
 <text text-anchor="start" x="1838.5" y="-1156" font-family="monospace" font-size="10.00">rawdata/mutation/CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf</text>
-<polygon fill="#576ed9" stroke="#576ed9" points="1832.5,-1302 1832.5,-1302 2860.5,-1302 2860.5,-1302 1832.5,-1302"/>
-<polygon fill="#576ed9" stroke="#576ed9" points="1832.5,-1226 1832.5,-1226 2860.5,-1226 2860.5,-1226 1832.5,-1226"/>
-<polygon fill="none" stroke="#576ed9" stroke-width="2" points="1832,-1147 1832,-1331 2859,-1331 2859,-1147 1832,-1147"/>
+<polygon fill="#57d962" stroke="#57d962" points="1832.5,-1302 1832.5,-1302 2860.5,-1302 2860.5,-1302 1832.5,-1302"/>
+<polygon fill="#57d962" stroke="#57d962" points="1832.5,-1226 1832.5,-1226 2860.5,-1226 2860.5,-1226 1832.5,-1226"/>
+<polygon fill="none" stroke="#57d962" stroke-width="2" points="1832,-1147 1832,-1331 2859,-1331 2859,-1147 1832,-1147"/>
 </g>
 <!-- 11&#45;&gt;10 -->
 <g id="edge15" class="edge">
@@ -304,18 +304,18 @@
 <text text-anchor="start" x="3162.5" y="-677.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="3232.5" y="-677.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2857.5" y="-658" font-family="monospace" font-size="10.00">procdata/metadata/annotations/CCLE_sampleMetadata_annotated.tsv</text>
-<polygon fill="#6ed957" stroke="#6ed957" points="2851.5,-732 2851.5,-732 3243.5,-732 3243.5,-732 2851.5,-732"/>
-<polygon fill="#6ed957" stroke="#6ed957" points="2851.5,-692 2851.5,-692 3243.5,-692 3243.5,-692 2851.5,-692"/>
-<polygon fill="none" stroke="#6ed957" stroke-width="2" points="2851,-649 2851,-761 3242,-761 3242,-649 2851,-649"/>
+<polygon fill="#57b1d9" stroke="#57b1d9" points="2851.5,-732 2851.5,-732 3243.5,-732 3243.5,-732 2851.5,-732"/>
+<polygon fill="#57b1d9" stroke="#57b1d9" points="2851.5,-692 2851.5,-692 3243.5,-692 3243.5,-692 2851.5,-692"/>
+<polygon fill="none" stroke="#57b1d9" stroke-width="2" points="2851,-649 2851,-761 3242,-761 3242,-649 2851,-649"/>
 </g>
 <!-- 12&#45;&gt;1 -->
-<g id="edge3" class="edge">
+<g id="edge5" class="edge">
 <title>12&#45;&gt;1</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M3038.06,-647.86C3029.75,-576.85 3023.11,-452.01 3060.5,-354 3064.04,-344.72 3068.62,-335.62 3073.85,-326.86"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="3076.93,-328.54 3079.29,-318.21 3071.01,-324.81 3076.93,-328.54"/>
 </g>
 <!-- 12&#45;&gt;2 -->
-<g id="edge9" class="edge">
+<g id="edge6" class="edge">
 <title>12&#45;&gt;2</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M2972.7,-647.8C2927.15,-613.12 2867.71,-567.85 2815.82,-528.34"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="2817.63,-525.32 2807.56,-522.05 2813.39,-530.89 2817.63,-525.32"/>
@@ -334,9 +334,9 @@
 <text text-anchor="start" x="3428.5" y="-971.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="3119.5" y="-952" font-family="monospace" font-size="10.00">procdata/metadata/preprocessed_sampleMetadata.tsv</text>
 <text text-anchor="start" x="3119.5" y="-934" font-family="monospace" font-size="10.00">procdata/metadata/preprocessed_treatmentMetadata.tsv</text>
-<polygon fill="#57cdd9" stroke="#57cdd9" points="3113.5,-1044 3113.5,-1044 3439.5,-1044 3439.5,-1044 3113.5,-1044"/>
-<polygon fill="#57cdd9" stroke="#57cdd9" points="3113.5,-986 3113.5,-986 3439.5,-986 3439.5,-986 3113.5,-986"/>
-<polygon fill="none" stroke="#57cdd9" stroke-width="2" points="3113,-925 3113,-1073 3438,-1073 3438,-925 3113,-925"/>
+<polygon fill="#d96d57" stroke="#d96d57" points="3113.5,-1044 3113.5,-1044 3439.5,-1044 3439.5,-1044 3113.5,-1044"/>
+<polygon fill="#d96d57" stroke="#d96d57" points="3113.5,-986 3113.5,-986 3439.5,-986 3439.5,-986 3113.5,-986"/>
+<polygon fill="none" stroke="#d96d57" stroke-width="2" points="3113,-925 3113,-1073 3438,-1073 3438,-925 3113,-925"/>
 </g>
 <!-- 13&#45;&gt;12 -->
 <g id="edge16" class="edge">
@@ -361,9 +361,9 @@
 <text text-anchor="start" x="3314.5" y="-649" font-family="monospace" font-size="10.00">procdata/treatmentResponse/treatmentResponseExperiment.rds</text>
 <text text-anchor="start" x="3314.5" y="-631" font-family="monospace" font-size="10.00">procdata/treatmentResponse/treatmentResponse_profiles.tsv</text>
 <text text-anchor="start" x="3314.5" y="-613" font-family="monospace" font-size="10.00">procdata/treatmentResponse/treatmentResponse_raw.tsv</text>
-<polygon fill="#d95757" stroke="#d95757" points="3308.5,-777 3308.5,-777 3712.5,-777 3712.5,-777 3308.5,-777"/>
-<polygon fill="#d95757" stroke="#d95757" points="3308.5,-683 3308.5,-683 3712.5,-683 3712.5,-683 3308.5,-683"/>
-<polygon fill="none" stroke="#d95757" stroke-width="2" points="3308,-604 3308,-806 3711,-806 3711,-604 3308,-604"/>
+<polygon fill="#d99b57" stroke="#d99b57" points="3308.5,-777 3308.5,-777 3712.5,-777 3712.5,-777 3308.5,-777"/>
+<polygon fill="#d99b57" stroke="#d99b57" points="3308.5,-683 3308.5,-683 3712.5,-683 3712.5,-683 3308.5,-683"/>
+<polygon fill="none" stroke="#d99b57" stroke-width="2" points="3308,-604 3308,-806 3711,-806 3711,-604 3308,-604"/>
 </g>
 <!-- 13&#45;&gt;16 -->
 <g id="edge19" class="edge">
@@ -383,9 +383,9 @@
 <text text-anchor="start" x="3400.5" y="-410.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="3470.5" y="-410.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="3077.5" y="-391" font-family="monospace" font-size="10.00">procdata/metadata/annotations/CCLE_treatmentMetadata_annotated.tsv</text>
-<polygon fill="#57d986" stroke="#57d986" points="3071.5,-465 3071.5,-465 3481.5,-465 3481.5,-465 3071.5,-465"/>
-<polygon fill="#57d986" stroke="#57d986" points="3071.5,-425 3071.5,-425 3481.5,-425 3481.5,-425 3071.5,-425"/>
-<polygon fill="none" stroke="#57d986" stroke-width="2" points="3071,-382 3071,-494 3480,-494 3480,-382 3071,-382"/>
+<polygon fill="#62d957" stroke="#62d957" points="3071.5,-465 3071.5,-465 3481.5,-465 3481.5,-465 3071.5,-465"/>
+<polygon fill="#62d957" stroke="#62d957" points="3071.5,-425 3071.5,-425 3481.5,-425 3481.5,-425 3071.5,-425"/>
+<polygon fill="none" stroke="#62d957" stroke-width="2" points="3071,-382 3071,-494 3480,-494 3480,-382 3071,-382"/>
 </g>
 <!-- 13&#45;&gt;18 -->
 <g id="edge21" class="edge">
@@ -405,12 +405,12 @@
 <text text-anchor="start" x="4153.5" y="-1211.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="4223.5" y="-1211.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="3698.5" y="-1192" font-family="monospace" font-size="10.00">metadata/sampleAnnotation.txt</text>
-<polygon fill="#57d9cd" stroke="#57d9cd" points="3692.5,-1266 3692.5,-1266 4234.5,-1266 4234.5,-1266 3692.5,-1266"/>
-<polygon fill="#57d9cd" stroke="#57d9cd" points="3692.5,-1226 3692.5,-1226 4234.5,-1226 4234.5,-1226 3692.5,-1226"/>
-<polygon fill="none" stroke="#57d9cd" stroke-width="2" points="3692,-1183 3692,-1295 4233,-1295 4233,-1183 3692,-1183"/>
+<polygon fill="#d9c857" stroke="#d9c857" points="3692.5,-1266 3692.5,-1266 4234.5,-1266 4234.5,-1266 3692.5,-1266"/>
+<polygon fill="#d9c857" stroke="#d9c857" points="3692.5,-1226 3692.5,-1226 4234.5,-1226 4234.5,-1226 3692.5,-1226"/>
+<polygon fill="none" stroke="#d9c857" stroke-width="2" points="3692,-1183 3692,-1295 4233,-1295 4233,-1183 3692,-1183"/>
 </g>
 <!-- 14&#45;&gt;13 -->
-<g id="edge18" class="edge">
+<g id="edge17" class="edge">
 <title>14&#45;&gt;13</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M3806.63,-1181.95C3766.25,-1168.82 3722.57,-1155.81 3681.5,-1146 3579.16,-1121.55 3545.95,-1147.15 3447.5,-1110 3426.41,-1102.04 3405.19,-1091.25 3385.2,-1079.52"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="3386.78,-1076.4 3376.41,-1074.26 3383.19,-1082.4 3386.78,-1076.4"/>
@@ -427,18 +427,18 @@
 <text text-anchor="start" x="3592.5" y="-1211.8" font-family="sans" font-weight="bold" font-size="14.00">output →</text>
 <text text-anchor="start" x="3662.5" y="-1211.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="2885.5" y="-1192" font-family="monospace" font-size="10.00">metadata/treatmentAnnotation.csv</text>
-<polygon fill="#cdd957" stroke="#cdd957" points="2879.5,-1266 2879.5,-1266 3673.5,-1266 3673.5,-1266 2879.5,-1266"/>
-<polygon fill="#cdd957" stroke="#cdd957" points="2879.5,-1226 2879.5,-1226 3673.5,-1226 3673.5,-1226 2879.5,-1226"/>
-<polygon fill="none" stroke="#cdd957" stroke-width="2" points="2879,-1183 2879,-1295 3672,-1295 3672,-1183 2879,-1183"/>
+<polygon fill="#d3d957" stroke="#d3d957" points="2879.5,-1266 2879.5,-1266 3673.5,-1266 3673.5,-1266 2879.5,-1266"/>
+<polygon fill="#d3d957" stroke="#d3d957" points="2879.5,-1226 2879.5,-1226 3673.5,-1226 3673.5,-1226 2879.5,-1226"/>
+<polygon fill="none" stroke="#d3d957" stroke-width="2" points="2879,-1183 2879,-1295 3672,-1295 3672,-1183 2879,-1183"/>
 </g>
 <!-- 15&#45;&gt;13 -->
-<g id="edge17" class="edge">
+<g id="edge18" class="edge">
 <title>15&#45;&gt;13</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M3275.5,-1181.9C3275.5,-1152.88 3275.5,-1116.86 3275.5,-1084.55"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="3279,-1084.2 3275.5,-1074.2 3272,-1084.2 3279,-1084.2"/>
 </g>
 <!-- 16&#45;&gt;1 -->
-<g id="edge5" class="edge">
+<g id="edge4" class="edge">
 <title>16&#45;&gt;1</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M3531.37,-602.75C3541.71,-526.9 3542.12,-424.47 3489.5,-354 3460.85,-315.63 3418.69,-289.6 3373.99,-271.95"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="3375,-268.59 3364.41,-268.31 3372.52,-275.13 3375,-268.59"/>
@@ -457,9 +457,9 @@
 <text text-anchor="start" x="4241.5" y="-971.8" font-family="sans" font-size="10.00"> </text>
 <text text-anchor="start" x="3464.5" y="-952" font-family="monospace" font-size="10.00">rawdata/treatmentResponse/CCLE_GNF_data_090613.xls</text>
 <text text-anchor="start" x="3464.5" y="-934" font-family="monospace" font-size="10.00">rawdata/treatmentResponse/CCLE_NP24.2009_Drug_data_2015.02.24.csv</text>
-<polygon fill="#86d957" stroke="#86d957" points="3458.5,-1044 3458.5,-1044 4252.5,-1044 4252.5,-1044 3458.5,-1044"/>
-<polygon fill="#86d957" stroke="#86d957" points="3458.5,-986 3458.5,-986 4252.5,-986 4252.5,-986 3458.5,-986"/>
-<polygon fill="none" stroke="#86d957" stroke-width="2" points="3458,-925 3458,-1073 4251,-1073 4251,-925 3458,-925"/>
+<polygon fill="#57d9a6" stroke="#57d9a6" points="3458.5,-1044 3458.5,-1044 4252.5,-1044 4252.5,-1044 3458.5,-1044"/>
+<polygon fill="#57d9a6" stroke="#57d9a6" points="3458.5,-986 3458.5,-986 4252.5,-986 4252.5,-986 3458.5,-986"/>
+<polygon fill="none" stroke="#57d9a6" stroke-width="2" points="3458,-925 3458,-1073 4251,-1073 4251,-925 3458,-925"/>
 </g>
 <!-- 17&#45;&gt;16 -->
 <g id="edge20" class="edge">
@@ -468,7 +468,7 @@
 <polygon fill="grey" stroke="grey" stroke-width="2" points="3639.04,-811.05 3629.14,-807.26 3634.52,-816.4 3639.04,-811.05"/>
 </g>
 <!-- 18&#45;&gt;1 -->
-<g id="edge4" class="edge">
+<g id="edge2" class="edge">
 <title>18&#45;&gt;1</title>
 <path fill="none" stroke="grey" stroke-width="2" d="M3243.06,-381C3233.42,-364.34 3222.58,-345.63 3211.97,-327.31"/>
 <polygon fill="grey" stroke="grey" stroke-width="2" points="3214.82,-325.25 3206.78,-318.36 3208.76,-328.76 3214.82,-325.25"/>

@@ -13,6 +13,8 @@ rnaseq = config["molecularProfiles"]["rnaseq"]
 storage HTTP: 
     provider = "http",
 
+conda_env = "../envs/r-bioconductor.yaml"
+
 rule download_RNASEQ:
     input:
         genes_rsem = storage.http(rnaseq["rsem-genes_tpm"]["url"]),
@@ -57,6 +59,8 @@ rule make_RNASEQ_SE:
         metadata = procdata / "rnaseq" / "CCLE_RNAseq_metadata.json"
     log:
         logs / "rnaseq" / "make_RNASEQ_SE.log"
+    conda:
+        conda_env
     threads:
         3
     script:

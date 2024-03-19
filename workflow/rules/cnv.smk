@@ -13,6 +13,8 @@ cnv = config["molecularProfiles"]["cnv"]
 storage HTTP: 
     provider = "http",
 
+conda_env = "../envs/r-bioconductor.yaml"
+
 rule downloadCNV:
     input:
         cnv = storage.http(cnv["copynumber_byGene"]["url"]),
@@ -21,15 +23,16 @@ rule downloadCNV:
     shell:
         "gunzip {input.cnv} -c > {output.cnv}"
 
-
 rule make_CNV_SE:
     input:
         cnv= rawdata / "cnv" / "CCLE_copynumber_byGene_2013-12-03.txt",
     output:
         CNV_SE = procdata / "cnv" / "CNV_SE.RDS"
-    threads:
-        1
     log:
         logs / "cnv" / "make_CNV_SE.log"
+    conda:
+        conda_env
+    threads:
+        1
     script:
         scripts / "cnv/make_CNV_SE.R"

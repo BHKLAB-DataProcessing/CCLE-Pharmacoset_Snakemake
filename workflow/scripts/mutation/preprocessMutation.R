@@ -1,3 +1,12 @@
+# Packages used in this script:
+# - data.table
+# - snakemake
+# - rtracklayer
+# - GenomicRanges
+# - IRanges
+# - S4Vectors
+
+
 ## ------------------- Parse Snakemake Object ------------------- ##
 # Check if the "snakemake" object exists
 if(exists("snakemake")){

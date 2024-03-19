@@ -2,13 +2,14 @@
 
 This pipeline is considered `End-to-End` and will take you from downloading the raw data needed to a fully annotated dataset.
 
-# STATUS REPORT
+## STATUS REPORT
 
 ![Status](./resources/status.png)
 
 The pipeline report can also [be viewed here](https://storage.cloud.google.com/orcestradata/CCLE-Pharmacoset_Snakemake/report.html?authuser=1)
 
-# Requirements
+## Requirements
+
 - [Snakemake](https://snakemake.readthedocs.io/en/stable/)
 
 
@@ -20,27 +21,47 @@ conda install mamba -n base -c conda-forge
 ```
 
 ``` bash
-mamba create -n snakemake -c conda-forge -c bioconda snakemake=7.32.4
+mamba env create -f workflow/envs/pipeline.yaml
+conda activate ccle_snakemake
+snakemake --version
 ```
 
-# So far, the following has been implemented:
+## Running the pipeline
 
-## Rulegraph 
+``` bash   
+snakemake --profile workflow/profiles/local --cores <NUMBER_OF_CORES>
+```
+
 ``` bash
-snakemake --profile workflow/profiles/labserver --rulegraph | dot -Tsvg > resources/rulegraph.svg
+snakemake --profile workflow/profiles/labserver
 ```
+
+``` bash
+snakemake --profile workflow/profiles/gcp 
+```
+
+## So far, the following has been implemented
+
+### Rulegraph
+
+``` bash
+snakemake --rulegraph | dot -Tsvg > resources/rulegraph.svg
+```
+
 ![Rulegraph](./resources/rulegraph.svg)
 
-## Directed Acyclic Graph (DAG)
+### Directed Acyclic Graph (DAG)
+
 ```  bash
-snakemake --profile workflow/profiles/labserver --dag | dot -Tsvg > resources/dag.svg
+snakemake -F --dag | dot -Tsvg > resources/dag.svg
 ```
 
 ![DAG](./resources/dag.svg)
 
-## Filegraph 
+### Filegraph
+
 ``` bash
-snakemake --profile workflow/profiles/labserver  --filegraph | dot -Tsvg > resources/filegraph.svg
+snakemake --filegraph | dot -Tsvg > resources/filegraph.svg
 ```
 
 ![filegraph](./resources/filegraph.svg)

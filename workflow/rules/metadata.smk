@@ -45,6 +45,8 @@ rule preprocessMetadata:
         sampleMetadata = procdata / metadata / "preprocessed_sampleMetadata.tsv",
     threads:
         1
+    container: 
+        annotationGx_docker
     script:
         scripts / "metadata/preprocessMetadata.R"
 
@@ -71,6 +73,8 @@ rule annotate_treatmentMetadata:
         treatmentMetadata = procdata / metadata / "annotations" / "CCLE_treatmentMetadata_annotated.tsv",
     log:
         logs / metadata / "annotate_treatmentMetadata.log"
+    container: 
+        annotationGx_docker
     threads:
         8
     script:
@@ -88,6 +92,8 @@ rule annotate_sampleMetadata:
         sampleMetadata = procdata / metadata / "annotations" / "CCLE_sampleMetadata_annotated.tsv",
     log:
         logs / metadata / "annotate_sampleMetadata.log"
+    container: 
+        annotationGx_docker
     threads:
         8
     script:

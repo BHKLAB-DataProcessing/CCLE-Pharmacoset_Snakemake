@@ -16,29 +16,6 @@ include: "workflow/rules/rnaseq.smk"
 include: "workflow/rules/cnv.smk"
 include: "workflow/rules/mutation.smk"
 
-# results/exports
-# ├── annotation.json
-# ├── curation
-# │   ├── sample.tsv
-# │   ├── tissue.tsv
-# │   └── treatment.tsv
-# ├── molecularProfiles
-# │   ├── cnv
-# │   │   └── cnv.genes.tsv
-# │   ├── molecularProfiles_metadata.json
-# │   ├── mut
-# │   │   └── mut.genes.tsv
-# │   └── rnaseq
-# │       ├── rnaseq.genes_counts.tsv
-# │       ├── rnaseq.genes_rpkm.tsv
-# │       ├── rnaseq.genes_tpm.tsv
-# │       └── rnaseq.transcripts_tpm.tsv
-# ├── sample.tsv
-# ├── treatmentResponse
-# │   ├── profiles.tsv
-# │   ├── sensitivity.tsv
-# │   └── treatmentResponse_metadata.json
-# └── treatment.tsv
 
 """
 snakemake \
@@ -90,3 +67,11 @@ rule build_PharmacoSet:
     script:
         scriptDir / "build_PharmacoSet.R"
 
+# Temporary, separate rule for building the report
+rule build_report:
+    input:
+        pset = results / "CCLE_PSet.RDS",
+    output:
+        results / "report.html",
+    script:
+        scriptDir / "report/report.Rmd"

@@ -11,10 +11,10 @@ scripts = Path("../scripts")
 # parse config
 treatmentResponse = config["treatmentResponse"]
 
-
 storage HTTP: 
     provider = "http",
 
+conda_env = "../envs/treatmentResponse.yaml"
 
 rule build_treatmentResponseExperiment:
     input:
@@ -23,15 +23,17 @@ rule build_treatmentResponseExperiment:
         treatmentMetadata = procdata / metadata / "preprocessed_treatmentMetadata.tsv",
         sampleMetadata = procdata / metadata / "preprocessed_sampleMetadata.tsv",
     output:
-        tre = procdata / "treatmentResponse" / "treatmentResponseExperiment.rds",
-        raw = procdata / "treatmentResponse" / "treatmentResponse_raw.tsv",
-        profiles = procdata / "treatmentResponse" / "treatmentResponse_profiles.tsv",
+        tre =  results / "treatmentResponse" / "treatmentResponseExperiment.rds",
+        raw =   procdata / "treatmentResponse" / "treatmentResponse_raw.tsv",
+        profiles =   procdata / "treatmentResponse" / "treatmentResponse_profiles.tsv",
     log:
         log = logs / "treatmentResponse" / "build_treatmentResponseExperiment.log",
     threads: 
         30
     resources:
         mem_mb = 96000
+    conda:
+        conda_env
     script:
         scripts / "treatmentResponse/build_treatmentResponseExperiment.R"
 

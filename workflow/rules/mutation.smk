@@ -13,6 +13,7 @@ mutation = config["molecularProfiles"]["mutation"]
 storage HTTP: 
     provider = "http",
 
+conda_env = "../envs/r-bioconductor.yaml"
 
 
 rule downloadMutation:
@@ -42,10 +43,12 @@ rule preprocessMutation:
         hybridCapture=rawdata / "mutation" / "CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf",
     output:
         preprocessedMutation = procdata / "mutation" / "preprocessedMutation.RDS"
-    threads:
-        1
     log:
         logs / "mutation" / "preprocessMutation.log"
+    conda:
+        conda_env
+    threads:
+        1
     script:
         scripts / "mutation" / "preprocessMutation.R"
 
@@ -55,9 +58,11 @@ rule make_Mutation_SE:
         preprocessedMutation = procdata / "mutation" / "preprocessedMutation.RDS",
     output:
         processedMutationSE = procdata / "mutation" / "Mutation_SE.RDS"
-    threads:
-        1 
+    conda:
+        conda_env
     log:
         logs / "mutation" / "make_Mutation_SE.log"
+    threads:
+        1 
     script:
         scripts / "mutation" / "make_Mutation_SE.R"

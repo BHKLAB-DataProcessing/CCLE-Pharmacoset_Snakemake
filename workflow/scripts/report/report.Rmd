@@ -1,0 +1,98 @@
+---
+title: "Test Report"
+author:
+    - "Your Name"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+   rmd: "report.Rmd"
+output:
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+## R Markdown
+
+This is an R Markdown document.
+``` {r setup}
+
+suppressMessages(library(PharmacoGx))
+library(data.table)
+```
+
+
+## Read in PSet and load libraries
+``` {r read_pset}
+pset <- readRDS('/home/bioinf/bhklab/jermiah/repos/CCLE-Pharmacoset_Snakemake/results/CCLE_PSet.RDS')
+```
+
+
+## View Object
+
+``` {r view_object}
+show(pset)
+```
+
+## Subsetting the PSet
+
+``` {r subset_pset}
+sampleMetadata <- sampleInfo(pset) |>
+    data.table::as.data.table()
+str(sampleMetadata)
+```
+
+``` {r get_sites}
+metastatic_sites <- unique(sampleMetadata[["cellosaurus.derived-from-site"]])
+derived_from_site <- lapply(strsplit(x = metastatic_sites, split = "; "), function(x){
+    # covert list into a row for a data.table
+    if(all(is.na(x))) return(data.table(Stage = NA_character_, Site = NA_character_, Ontology = NA_character_))
+
+    Stage <- x[1]
+    Site <- x[2]
+    if(length(x) < 3) {
+        Ontology <- NA_character_
+    } else if(startsWith(x[3], "UBERON")){
+        Ontology <- gsub("UBERON=", "", x[3])
+    } else {
+        Ontology <- gsub("UBERON=", "", x[4])
+    }
+    data.table(Stage, Site, Ontology)
+}) |> data.table::rbindlist()
+
+
+library(ggplot2)
+library(dplyr)
+
+# plot types of Sites and Stages
+
+metastatic_sites <- derived_from_site %>%
+    filter(!is.na(Site)) %>%
+    group_by(Site) %>%
+    summarise(n = n()) %>%
+    arrange(desc(n))
+
+metastatic_stages <- derived_from_site %>%
+    filter(!is.na(Stage)) %>%
+    group_by(Stage) %>%
+    summarise(n = n()) %>%
+    arrange(desc(n))
+
+ggplot(metastatic_sites, aes(x = reorder(Site, -n), y = n)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Sites of Metastasis", x = "Site", y = "Number of Samples") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip()
+
+ggplot(metastatic_stages, aes(x = reorder(Stage, -n), y = n)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Stages of Metastasis", x = "Stage", y = "Number of Samples") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    coord_flip()
+```
+

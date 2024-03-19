@@ -1,0 +1,13 @@
+# 
+name: ccle_snakemake
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - snakemake=8.9
+  - snakemake-storage-plugin-gcs=0.1.4
+  - snakemake-storage-plugin-http=0.2.3
+  - singularity
+  - python-kubernetes
+  - kubernetes
