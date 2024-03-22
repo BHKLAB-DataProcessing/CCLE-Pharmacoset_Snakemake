@@ -11,10 +11,10 @@ if(exists("snakemake")){
         sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
 
     save.image(
-        file.path("rdata_files/", paste0(snakemake@rule, ".RData"))
+        file.path("resources/", paste0(snakemake@rule, ".RData"))
     )
 }
-load(file.path("rdata_files/make_Mutation_SE.RData"))
+load(file.path("resources/make_Mutation_SE.RData"))
 
 message("Loading mutation data")
 input <- readRDS(INPUT$preprocessedMutation)

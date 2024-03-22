@@ -11,70 +11,98 @@ if(exists("snakemake")){
         sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
 
     save.image(
-        file.path("rdata_files/", paste0(snakemake@rule, ".RData"))
+        file.path("resources/", paste0(snakemake@rule, ".RData"))
     )
 }
 
-load("rdata_files/annotate_sampleMetadata.RData")
-
+load("resources/annotate_sampleMetadata.RData")
+library(data.table)
 # 1.0 Read Input Data
 # -------------------
 
 message("\n\nINPUT: ", INPUT)
 sampleMetadata <- data.table::fread(INPUT$sampleMetadata)
-
-
-BPPARAM <- BiocParallel::MulticoreParam(workers = 30, progressbar = TRUE)
+sampleMetadata <- sampleMetadata[, .(CCLE.depMapID, CCLE.sampleid, CCLE.name)]
+depMapIDS <- sampleMetadata[CCLE.depMapID != "", CCLE.depMapID]
+options("mc.cores" = THREADS)
 
 (mapped_cells <- AnnotationGx::mapCell2Accession(
-    sampleMetadata[!CCLE.depMapID == "", CCLE.depMapID],
+    depMapIDS,
     from = "dr",
-    BPPARAM= BPPARAM
 ))
 
-# filter out NA
-cellosaurus_accessions <- mapped_cells[!is.na(mapped_cells$ac), .(sampleid = id, accession = ac, depMapID = `query:dr`)]
-names(cellosaurus_accessions) <- paste0("cellosaurus.", names(cellosaurus_accessions))
+
+mapped_sampleMetadata <- merge(
+    sampleMetadata, 
+    mapped_cells[!is.na(accession),], 
+    by.x = "CCLE.depMapID", 
+    by.y = "query", 
+    all.x = TRUE
+)
+
+message("Number of failed mappings: ", sum(is.na(mapped_sampleMetadata$accession)))
+print(missing <- mapped_sampleMetadata[is.na(accession), ])
+
+message("Trying again using the sample name")
+missing[, c("cellLineName", "accession") := {
+    parsed_name <- strsplit(CCLE.sampleid, "_") |> 
+        purrr::map_chr(1)
+    result <- AnnotationGx::mapCell2Accession(parsed_name)
+    list(result$cellLineName, result$accession)
+}]
+
+annotated_sampleMetadata <- data.table::rbindlist(
+    list(mapped_sampleMetadata, missing), fill = TRUE
+)[order(CCLE.sampleid)]
+
+data.table::setnames(
+    annotated_sampleMetadata,
+    c("cellLineName", "accession"),
+    c("cellosaurus.cellLineName", "cellosaurus.accession")
+    )
+
 
 cellosaurus_fields <- c("sy", "ca", "sx", "ag", "di", "derived-from-site", "misspelling")
 
 stopifnot(all(cellosaurus_fields %in% AnnotationGx:::.cellosaurus_fields()))
-(map_fields <- AnnotationGx::mapCell2Accession(
-    cellosaurus_accessions[, cellosaurus.accession],
-    from = "ac",
-    to = cellosaurus_fields,
-    BPPARAM = BPPARAM)
-)
 
-data.table::setnames(map_fields, cellosaurus_fields, paste0("cellosaurus.", cellosaurus_fields), skip_absent = TRUE)
+# (map_fields <- AnnotationGx::mapCell2Accession(
+#     cellosaurus_accessions[, cellosaurus.accession],
+#     from = "ac",
+#     to = cellosaurus_fields,
+#     BPPARAM = BPPARAM)
+# )
 
-cellosaurus_annotations <- 
-    merge(
-        map_fields[, query:= NULL],
-        cellosaurus_accessions,
-        by.x = "query:ac",
-        by.y = "cellosaurus.accession",
-    )
-data.table::setnames(cellosaurus_annotations, "query:ac", "cellosaurus.accession")
+# data.table::setnames(map_fields, cellosaurus_fields, paste0("cellosaurus.", cellosaurus_fields), skip_absent = TRUE)
+
+# cellosaurus_annotations <- 
+#     merge(
+#         map_fields[, query:= NULL],
+#         cellosaurus_accessions,
+#         by.x = "query:ac",
+#         by.y = "cellosaurus.accession",
+#     )
+# data.table::setnames(cellosaurus_annotations, "query:ac", "cellosaurus.accession")
 
 
 
 
-data.table::setkeyv(sampleMetadata, "CCLE.depMapID")
+# data.table::setkeyv(sampleMetadata, "CCLE.depMapID")
 
-sampleMetadata <- merge(
-    sampleMetadata, 
-    cellosaurus_annotations, 
-    by.x = "CCLE.depMapID", 
-    by.y = "cellosaurus.depMapID", 
-    all.x = TRUE
-)
+# sampleMetadata <- merge(
+#     sampleMetadata, 
+#     cellosaurus_annotations, 
+#     by.x = "CCLE.depMapID", 
+#     by.y = "cellosaurus.depMapID", 
+#     all.x = TRUE
+# )
 
 # Write Output
 # ------------
 message("Saving sampleMetadata to: ", OUTPUT$sampleMetadata)
+dir.create(dirname(OUTPUT$sampleMetadata), showWarnings = FALSE, recursive = TRUE)
 data.table::fwrite(
-    sampleMetadata, 
+    annotated_sampleMetadata, 
     file = OUTPUT$sampleMetadata, 
     quote = TRUE, 
     sep = "\t", 

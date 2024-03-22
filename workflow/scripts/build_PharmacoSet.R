@@ -11,10 +11,10 @@ if(exists("snakemake")){
         sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
 
     save.image(
-        file.path("rdata_files/", paste0(snakemake@rule, ".RData"))
+        file.path("resources/", paste0(snakemake@rule, ".RData"))
     )
 }
-# load("rdata_files/build_PharmacoSet.RData")
+# load("resources/build_PharmacoSet.RData")
 
 suppressPackageStartupMessages(library(PharmacoGx))
 snakemake@source("metadata/cleanCharacterStrings.R") # for cleanCharacterStrings()

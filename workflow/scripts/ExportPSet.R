@@ -13,10 +13,10 @@ if(exists("snakemake")){
         sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
 
     save.image(
-        file.path("rdata_files/ExportPSet.RData")
+        file.path("resources/ExportPSet.RData")
     )
 }
-load("rdata_files/ExportPSet.RData")
+load("resources/ExportPSet.RData")
 suppressPackageStartupMessages(library(PharmacoGx, quietly = TRUE))
 
 # load pset
@@ -165,19 +165,19 @@ lapply(tr_assays, function(x){
 
 message("\n\nDone!")
 
-# Load the ggplot2 library
-library(ggplot2)
+# # Load the ggplot2 library
+# library(ggplot2)
 
-# Create a simple data frame
-data <- data.frame(
-  x = 1:10,
-  y = 1:10
-)
+# # Create a simple data frame
+# data <- data.frame(
+#   x = 1:10,
+#   y = 1:10
+# )
 
-# Create the plot
-my_plot <- ggplot(data, aes(x = x, y = y)) +
-  geom_point() +  # Add points
-  geom_line()     # Add lines
+# # Create the plot
+# my_plot <- ggplot(data, aes(x = x, y = y)) +
+#   geom_point() +  # Add points
+#   geom_line()     # Add lines
 
-# Save the plot to a file (change "plot.png" to your desired filename and extension)
-ggsave("results/exports/plot.png", plot = my_plot, width = 6, height = 4, dpi = 300)
+# # Save the plot to a file (change "plot.png" to your desired filename and extension)
+# ggsave("results/exports/plot.png", plot = my_plot, width = 6, height = 4, dpi = 300)
