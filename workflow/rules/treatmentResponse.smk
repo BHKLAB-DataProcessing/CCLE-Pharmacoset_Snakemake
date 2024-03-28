@@ -20,8 +20,8 @@ rule build_treatmentResponseExperiment:
     input:
         rawdata = rawdata / "treatmentResponse" / "CCLE_NP24.2009_Drug_data_2015.02.24.csv",
         processed = rawdata / "treatmentResponse" / "CCLE_GNF_data_090613.xls",
-        treatmentMetadata = procdata / metadata / "preprocessed_treatmentMetadata.tsv",
-        sampleMetadata = procdata / metadata / "preprocessed_sampleMetadata.tsv",
+        treatmentMetadata = procdata / metadata / "annotations" / "CCLE_treatmentMetadata_annotated.tsv",
+        sampleMetadata = procdata / metadata / "annotations" / "CCLE_sampleMetadata_annotated.tsv",
     output:
         tre =  results / "treatmentResponse" / "treatmentResponseExperiment.rds",
         raw =   procdata / "treatmentResponse" / "treatmentResponse_raw.tsv",

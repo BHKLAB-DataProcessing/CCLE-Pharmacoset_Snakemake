@@ -10,6 +10,7 @@ use-singularity: True
 # default-remote-prefix: "orcestradata/CCLE-Pharmacoset_Snakemake"
 default-storage-provider: "gcs"
 default-storage-prefix: "gs://orcestradata/CCLE-Pharmacoset_Snakemake"
+storage-gcs-keep-local: True
 
 # When running on Kubernetes
 jobs: 256

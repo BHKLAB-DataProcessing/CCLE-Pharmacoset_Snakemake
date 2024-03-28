@@ -58,54 +58,105 @@ data.table::setnames(treatment_annotations, "cids", "CID")
 names(treatment_annotations) <- paste0("pubchem.", names(treatment_annotations))
 
 # 5.0 Annotate with external
-message("\n\nAnnotating with external annotations")
-annotations <- c('ChEMBL ID', 'NSC Number', 'Drug Induced Liver Injury', 'CAS', 'ATC Code')
+# message("\n\nAnnotating with external annotations")
+# annotations <- c('ChEMBL ID', 'NSC Number', 'Drug Induced Liver Injury', 'CAS', 'ATC Code')
 
-lapply(seq_along(annotations), function(i) {
-    message(paste0("Annotating with ", annotations[i]))
-    treatment_annotations[
-        !is.na(pubchem.CID), 
-        paste0("pubchem.", annotations[i]) := AnnotationGx::annotatePubchemCompound(pubchem.CID, heading = annotations[i])
-        ]
-})
+# lapply(seq_along(annotations), function(i) {
+#     message(paste0("Annotating with ", annotations[i]))
+#     treatment_annotations[
+#         !is.na(pubchem.CID), 
+#         paste0("pubchem.", annotations[i]) := AnnotationGx::annotatePubchemCompound(pubchem.CID, heading = annotations[i])
+#         ]
+# })
 
 # gsub every column name to remove the " " 
-colnames(treatment_annotations) <- gsub(" ", "_", colnames(treatment_annotations))
+# colnames(treatment_annotations) <- gsub(" ", "_", colnames(treatment_annotations))
 
-treatmentMetadata <- merge(
-    treatmentMetadata, 
-    treatment_annotations, 
-    by.x = "CCLE.treatmentid", 
-    by.y = "pubchem.name", all.x = TRUE)
+# treatmentMetadata <- merge(
+#     treatmentMetadata, 
+#     treatment_annotations, 
+#     by.x = "CCLE.treatmentid", 
+#     by.y = "pubchem.name", all.x = TRUE)
 
 
-treatmentMetadata[,pubchem.ChEMBL_ID := data.table::tstrsplit(pubchem.ChEMBL_ID, ";", fixed = TRUE)[1]]
+unichem_sources <- AnnotationGx::getUnichemSources(T)
+data.table::setkey(unichem_sources, Name)
 
-chembl_mechanisms_dt <- treatmentMetadata[, AnnotationGx::getChemblMechanism(pubchem.ChEMBL_ID)]
+sources_of_interest <- c("chembl", "drugbank", "chebi", "phamgkb", "lincs", "clinicaltrials", "nih_ncc", "fdasrs", "pharmgkb", "rxnorm")
+
+sourceID <- unichem_sources[Name == "pubchem", SourceID]
+
+message("\n\nAnnotating with unichem...")
+annotations <- lapply(treatment_annotations$pubchem.CID, function(x){
+  tryCatch({
+    result <- AnnotationGx::queryUnichemCompound(type = "sourceID", compound = x, sourceID = sourceID)
+
+    subset <- result$External_Mappings[Name %in% sources_of_interest, .(compoundID, Name)]
+    # make Name the column names and the values the compoundID 
+    subset$cid <- x
+    dcast(subset, cid ~ Name, value.var = "compoundID", fun.aggregate = list)
+  }, error = function(e) NULL)
+  } 
+  ) |> data.table::rbindlist(fill = T)
+show(annotations)
+
+
+
+unichem_mappings <- copy(annotations)
+# for each column, if its a list then make it a string with a comma separator
+for(col in names(unichem_mappings)){
+  if(is.list(unichem_mappings[[col]])){
+    unichem_mappings[[col]] <- sapply(unichem_mappings[[col]], function(x) paste(x, collapse = ","))
+  }
+}
+# Rename columns like drugbank to unichem.DrugBank etc, using the unichem_sources "NameLabel" column 
+names(unichem_mappings) <- paste("unichem", unichem_sources[names(unichem_mappings), gsub(" ", "_", NameLabel)], sep = ".")
+
+all_annotated_treatmentMetadata <- merge(treatment_annotations, unichem_mappings, by.x = "pubchem.CID", by.y = "unichem.NA", all.x = T)
+
+####################
+
+annotated_treatmentMetadata <- copy(all_annotated_treatmentMetadata)
+message("\n\nAnnotating with ChEMBL using Unichem-obtained ChEMBL IDs")
+chembl_mechanisms_dt <- annotated_treatmentMetadata[, AnnotationGx::getChemblMechanism(unichem.ChEMBL)]
 
 chembl_cols_of_interest <- c(
         "molecule_chembl_id",  "parent_molecule_chembl_id", "target_chembl_id", "record_id", 
         "mechanism_of_action", "mechanism_comment", "action_type"
     )
 
-treatmentMetadata <- merge(
-    treatmentMetadata, 
+annotated_treatmentMetadata <- merge(
+    annotated_treatmentMetadata, 
     chembl_mechanisms_dt[, ..chembl_cols_of_interest], 
-    by.x = "pubchem.ChEMBL_ID", 
-    by.y = "molecule_chembl_id", all.x = TRUE)
+    by.x = "unichem.ChEMBL",
+    by.y = "molecule_chembl_id", 
+    all.x = TRUE
+    )
 
 data.table::setnames(
-    treatmentMetadata, 
+    annotated_treatmentMetadata, 
     chembl_cols_of_interest, 
     paste0("chembl.", chembl_cols_of_interest), 
     skip_absent = TRUE)
+
+annotated_treatmentMetadata <- annotated_treatmentMetadata[!duplicated(pubchem.CID),]
+
+
+final_treatmentMetadata <- merge(
+    treatmentMetadata, 
+    annotated_treatmentMetadata, 
+    by.x = "CCLE.treatmentid", 
+    by.y = "pubchem.name", 
+    all.x = TRUE
+
+)
 
 # 6.0 Write out cleaned data
 # --------------------------
 message("\n\nWriting out cleaned data to ", OUTPUT$treatmentMetadata)
 
 data.table::fwrite(
-    treatmentMetadata, 
+    final_treatmentMetadata, 
     file = OUTPUT$treatmentMetadata,
     quote = FALSE,
     sep = "\t"

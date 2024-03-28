@@ -25,8 +25,7 @@ cleanCharacterStrings <- function(name){
     # # convert entire string to uppercase
     name <- toupper(name)
 
-    print(name)
-
+ 
     # dealing with unicode characters 
     name <- gsub("Unicode", "", iconv(name, "LATIN1", "ASCII", "Unicode"), perl=TRUE)
 

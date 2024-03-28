@@ -21,88 +21,104 @@ library(data.table)
 # -------------------
 
 message("\n\nINPUT: ", INPUT)
-sampleMetadata <- data.table::fread(INPUT$sampleMetadata)
-sampleMetadata <- sampleMetadata[, .(CCLE.depMapID, CCLE.sampleid, CCLE.name)]
-depMapIDS <- sampleMetadata[CCLE.depMapID != "", CCLE.depMapID]
+raw <- data.table::fread(INPUT$sampleMetadata, header = TRUE, sep = "\t", na.strings = NA_character_)
+message("Number of samples: ", nrow(raw))
+
+sampleMetadata <- raw
+
+# Set this for mapping 
 options("mc.cores" = THREADS)
 
+options("log_level" = "INFO")   # AnnotationGx logging level
+
+# 2.0 Annotate Sample Metadata
+# ----------------------------
+
+# Using the depMapID over the cell line name since this ensures the exact match
+# that depmap would use
+message("Mapping cell line names to Cellosaurus accessions")
+options("log_level" = "INFO")
 (mapped_cells <- AnnotationGx::mapCell2Accession(
-    depMapIDS,
+    sampleMetadata[CCLE.depMapID != "", CCLE.depMapID],
     from = "dr",
 ))
 
+mapped_cells <- unique(mapped_cells[!is.na(accession),])
+mapped_cells <- merge(sampleMetadata, mapped_cells, by.x = "CCLE.depMapID", by.y = "query", all.x = FALSE)
+message("Successful mappings: ", nrow(mapped_cells))
 
-mapped_sampleMetadata <- merge(
-    sampleMetadata, 
-    mapped_cells[!is.na(accession),], 
-    by.x = "CCLE.depMapID", 
-    by.y = "query", 
-    all.x = TRUE
-)
+failed <- sampleMetadata[!CCLE.depMapID %in% mapped_cells$CCLE.depMapID, ]
 
-message("Number of failed mappings: ", sum(is.na(mapped_sampleMetadata$accession)))
-print(missing <- mapped_sampleMetadata[is.na(accession), ])
+message("Number of failed mappings: ", nrow(failed))
+print(missing <- failed)
 
+
+# Here we parse the sample id on the _ character and use the first part to map to the cellosaurus
+# accession number. Also use fuzzy matching to try and get the correct cell line name
 message("Trying again using the sample name")
 missing[, c("cellLineName", "accession") := {
     parsed_name <- strsplit(CCLE.sampleid, "_") |> 
         purrr::map_chr(1)
-    result <- AnnotationGx::mapCell2Accession(parsed_name)
+    
+    # The only manual change is for the "NCIH2330" cell line since it isnt included in misspellings
+    parsed_name[parsed_name == "NCIH2330"] <- "H2330" 
+    result <- AnnotationGx::mapCell2Accession(parsed_name, fuzzy = T)
     list(result$cellLineName, result$accession)
 }]
 
+# Combine the mapped and missing data
 annotated_sampleMetadata <- data.table::rbindlist(
-    list(mapped_sampleMetadata, missing), fill = TRUE
+    list(
+        mapped_cells, 
+        missing
+    ), fill = TRUE
 )[order(CCLE.sampleid)]
 
+# Rename the columns from cellosaurus
 data.table::setnames(
     annotated_sampleMetadata,
     c("cellLineName", "accession"),
     c("cellosaurus.cellLineName", "cellosaurus.accession")
-    )
+)
 
+# Some of the "CCLE.name" values are empty so we fill them in with the first part of the sample id
+annotated_sampleMetadata[CCLE.name == "", CCLE.name:= data.table::tstrsplit(CCLE.sampleid, "_", fixed = TRUE)[1]]
 
-cellosaurus_fields <- c("sy", "ca", "sx", "ag", "di", "derived-from-site", "misspelling")
+annotated_accessions <- AnnotationGx::annotateCellAccession(
+    accessions = annotated_sampleMetadata$cellosaurus.accession,
+)
+message("Number of annotated accessions: ", nrow(annotated_accessions))
 
-stopifnot(all(cellosaurus_fields %in% AnnotationGx:::.cellosaurus_fields()))
+message("Number of unique categories: ")
+annotated_accessions[, .N, by = "category"]
 
-# (map_fields <- AnnotationGx::mapCell2Accession(
-#     cellosaurus_accessions[, cellosaurus.accession],
-#     from = "ac",
-#     to = cellosaurus_fields,
-#     BPPARAM = BPPARAM)
-# )
-
-# data.table::setnames(map_fields, cellosaurus_fields, paste0("cellosaurus.", cellosaurus_fields), skip_absent = TRUE)
-
-# cellosaurus_annotations <- 
-#     merge(
-#         map_fields[, query:= NULL],
-#         cellosaurus_accessions,
-#         by.x = "query:ac",
-#         by.y = "cellosaurus.accession",
-#     )
-# data.table::setnames(cellosaurus_annotations, "query:ac", "cellosaurus.accession")
+message("Number of unique sexOfCell: ")
+annotated_accessions[, .N, by = "sexOfCell"]
 
 
 
+annotated_accessions[, synonyms := sapply(synonyms, function(x) paste(x, collapse = "; "))]
+annotated_accessions[, diseases := sapply(diseases, function(x) paste(x, collapse = "; "))]
 
-# data.table::setkeyv(sampleMetadata, "CCLE.depMapID")
+annotated_accessions[, c("crossReferences", "hierarchy", "comments") := NULL]
 
-# sampleMetadata <- merge(
-#     sampleMetadata, 
-#     cellosaurus_annotations, 
-#     by.x = "CCLE.depMapID", 
-#     by.y = "cellosaurus.depMapID", 
-#     all.x = TRUE
-# )
+names(annotated_accessions) <- paste0("cellosaurus.", names(annotated_accessions))
+annotated_accessions <- unique(annotated_accessions)
+
+final_annotated <- merge(
+    annotated_sampleMetadata, 
+    annotated_accessions,
+    by= c("cellosaurus.accession", "cellosaurus.cellLineName"),
+    all.x = TRUE
+) |> unique()
+
 
 # Write Output
 # ------------
 message("Saving sampleMetadata to: ", OUTPUT$sampleMetadata)
 dir.create(dirname(OUTPUT$sampleMetadata), showWarnings = FALSE, recursive = TRUE)
 data.table::fwrite(
-    annotated_sampleMetadata, 
+    final_annotated, 
     file = OUTPUT$sampleMetadata, 
     quote = TRUE, 
     sep = "\t", 

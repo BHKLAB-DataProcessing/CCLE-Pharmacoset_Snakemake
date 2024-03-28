@@ -10,6 +10,7 @@ scripts = Path("../scripts")
 
 storage HTTP: 
     provider = "http",
+    keep_local = True
 
 annotationGx_docker = config["containers"]["annotationGx"]
 

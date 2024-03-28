@@ -12,7 +12,7 @@ directories:
   logs: logs                            # Directory for logs
 
 containers:
-  annotationGx: "docker://bhklab/annotationgx-r:0.0.0.9088"
+  annotationGx: "docker://bhklab/annotationgx-r:0.0.0.9095"
 
 # Configure Data URLs
 metadata:

@@ -14,10 +14,12 @@ if(exists("snakemake")){
         file.path("resources/", paste0(snakemake@rule, ".RData"))
     )
 }
+load("resources/build_treatmentResponseExperiment.RData")
 snakemake@source("../metadata/cleanCharacterStrings.R")
 # 0.1 Startup 
 # -----------
 # load data.table, suppressPackageStartupMessages unless there is an error
+message("Loading libraries...")
 suppressPackageStartupMessages(library(data.table, quietly = TRUE))
 suppressPackageStartupMessages(library(dplyr, quietly = TRUE))
 suppressPackageStartupMessages(library(CoreGx, quietly = TRUE))
@@ -25,13 +27,17 @@ suppressPackageStartupMessages(library(PharmacoGx, quietly = TRUE))
 
 (rawdata <- data.table::fread(INPUT$rawdata, check.names = T))
 (sampleMetadata <- data.table::fread(INPUT$sampleMetadata, check.names = T))
-
+(treatmentMetadata <- data.table::fread(INPUT$treatmentMetadata, check.names = T, encoding = "Latin-1"))
 
 # calculate maximum number of doses used in an experiment
 # some experiments use less doses so this is necessary to keep dimensions consistent
 concentrations.no <- max(sapply(
     rawdata$"Doses..uM.", 
     function(x) length(unlist(strsplit(x, split = ",")))))
+
+
+
+
 
 #' This function processes treatment response data by converting it into a data.table format.
 #'
@@ -85,7 +91,27 @@ dt <- rbindlist(
     BiocParallel::bplapply(
         1:nrow(rawdata), 
         function(rowNum) fnExperiment(rawdata[rowNum,]),
-        BPPARAM = BiocParallel::MulticoreParam(workers = THREADS)))
+        BPPARAM = BiocParallel::MulticoreParam(workers = THREADS))
+    )
+
+###################################################### 
+# rename samples and treatments
+dt[, CCLE.sampleid := sampleid]
+dt[, CCLE.treatmentid := treatmentid]
+setkey(sampleMetadata, "CCLE.sampleid")
+dt[, sampleid := sampleMetadata[sampleid, cellosaurus.cellLineName]]
+
+# This is unnecessary but it is done to force an error if it fails
+y <- dt[, cleanCharacterStrings(CCLE.treatmentid)]
+x <- treatmentMetadata[, cleanCharacterStrings(unique(CCLE.raw_treatmentid))]
+matches <- treatmentMetadata[match(y, x), CCLE.treatmentid]
+
+dt[, treatmentid := matches]
+
+dt <- dt[!is.na(treatmentid) & !is.na(sampleid),]
+
+
+
 
 # Extracting columns for the first data.table
 published_profiles <- dt[, .(sampleid, treatmentid, EC50, IC50, Amax, ActArea)]
@@ -102,9 +128,12 @@ raw <- data.table::melt(raw,
 )
 
 raw <- raw[!is.na(dose),][, Dose := NULL][]
-raw[, treatmentid := cleanCharacterStrings(treatmentid)]
 published_profiles[, treatmentid := cleanCharacterStrings(treatmentid)]
+
+###################################################### 
+
 # CONSTRUCT THE TREDataMapper OBJECT
+message("Constructing the treatment response experiment object...")
 tdm <- CoreGx::TREDataMapper(rawdata=raw)
 
 CoreGx::rowDataMap(tdm) <- list(
@@ -127,6 +156,9 @@ CoreGx::assayMap(tdm) <- list(
 (ccle_tre <- CoreGx::metaConstruct(tdm))
 ccle_tre$sensitivity
 
+###################################################### 
+# Compute on the sensitivity assay
+message("Computing the profiles assay...")
 tre_fit <- ccle_tre |> CoreGx::endoaggregate(
     {  # the entire code block is evaluated for each group in our group by
         # 1. fit a log logistic curve over the dose range
@@ -152,16 +184,27 @@ tre_fit <- ccle_tre |> CoreGx::endoaggregate(
     by=c("treatmentid", "sampleid"),
     nthread=THREADS  # parallelize over multiple cores to speed up the computation
 )
+show(tre_fit)
 
 old_names <- c("EC50", "IC50", "Amax", "ActArea")
 data.table::setnames(published_profiles, old_names, paste0("published_", old_names))
 
+
+###################################################### 
+# use the profiles from tre_fit, merge the published profiles into the profiles
+# and assign to the ccle_tre 
+# this is done to ensure that the published profiles are included in the final object
+# probably shouldnt have two objects with the same data...  
 CoreGx::assay(ccle_tre, "profiles") <- 
     tre_fit$profiles[
         published_profiles, 
         on = c("treatmentid", "sampleid"), 
         c(paste0("published_", old_names)) := mget(paste0("i.published_", old_names))][]
 
+
+
+###################################################### 
+# Add metadata 
 CoreGx::metadata(ccle_tre) <- list(
     data_source = snakemake@config$treatmentResponse,
     filename = basename(unique(INPUT$rawdata)),
@@ -169,8 +212,11 @@ CoreGx::metadata(ccle_tre) <- list(
     date = Sys.Date(),
     sessionInfo = capture.output(sessionInfo())
 )
+show(ccle_tre)
+show(ccle_tre$profiles)
 
-
+###################################################### 
+# Save the object
 message("Saving the treatment response experiment object to ", OUTPUT$tre)
 saveRDS(ccle_tre, file = OUTPUT$tre)
 

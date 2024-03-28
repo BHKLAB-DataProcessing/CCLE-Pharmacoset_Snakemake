@@ -14,7 +14,7 @@ if(exists("snakemake")){
         file.path("resources/", paste0(snakemake@rule, ".RData"))
     )
 }
-# load("resources/build_PharmacoSet.RData")
+load("resources/build_PharmacoSet.RData")
 
 suppressPackageStartupMessages(library(PharmacoGx))
 snakemake@source("metadata/cleanCharacterStrings.R") # for cleanCharacterStrings()
@@ -41,21 +41,24 @@ tre <- readRDS(INPUT$treatmentResponseExperiment)
 
 # 1.0 Create additional metadata 
 # ------------------------------
-sampleNames <- c(
-    lapply(MultiAssayExperiment::colnames(mae), unique) |> 
-        unlist() |> 
-        unique(),
-    colnames(tre) |> 
-        unique()
-) |> unique()
-
+# sampleNames <- c(
+#     lapply(MultiAssayExperiment::colnames(mae), unique) |> 
+#         unlist() |> 
+#         unique(),
+#     colnames(tre) |> 
+#         unique()
+# ) |> unique()
 data.table::setkeyv(sampleMetadata, "CCLE.sampleid")
-sampleMetadata <- sampleMetadata[sampleNames,] |> unique()
-sampleMetadata[, sampleid := CCLE.sampleid]
+sampleMetadata[, sampleid := cellosaurus.cellLineName]
+sampleMetadata <- sampleMetadata[!duplicated(sampleid),][!is.na(sampleid),]
+sampleMetadata[!is.na(sampleid),]
+
+
+
 
 sample <- as.data.frame(
     sampleMetadata, 
-    row.names = sampleMetadata[, CCLE.sampleid]
+    row.names = sampleMetadata[, sampleid]
 )
 sample$unique.sampleid <- rownames(sample)
 

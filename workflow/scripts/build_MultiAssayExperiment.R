@@ -15,13 +15,14 @@ if(exists("snakemake")){
     )
 }
 load("resources/build_MultiAssayExperiment.RData")
-
+library(MultiAssayExperiment)
+library(data.table)
 
 # Read in metadata
 # ----------------
 message(paste("Loading: ", INPUT$sampleMetadata, sep = "\n\t"))
 sampleMetadata <- data.table::fread(INPUT$sampleMetadata)
-
+sampleMetadata <- sampleMetadata[!duplicated(cellosaurus.cellLineName),]
 # Read in the summarized experiments
 # ----------------------------------
 message(paste("Loading: ", INPUT$summarizedExperiment_lists, sep = "\n\t"))
@@ -51,25 +52,16 @@ if(!all(se_sampleNames %in% sampleMetadata$CCLE.sampleid)){
 
 
 data.table::setkeyv(sampleMetadata, "CCLE.sampleid")
+sampleMetadata[, sampleid := cellosaurus.cellLineName]
 
-sampleMetadata <- sampleMetadata[se_sampleNames,] |> unique()
-
-# first_col <- c("CCLE.sampleid", "CCLE.name", "cellosaurus.sampleid")
-# # order the sample metadata columns 
+# rename the columns of each summarized experiment to match the "sampleid" column in the sample metadata
+se_list <- lapply(se_list, function(x){
+    colnames(x) <- sampleMetadata[x$sampleid, sampleid]
+    x
+})
 
 # Build MultiAssayExperiment
 # --------------------------
-
-# create a data frame for coldata including sampleids and batch ids
-colData <- as.data.frame(sampleMetadata, row.names = sampleMetadata$CCLE.sampleid)
-
-colData$sampleid <- colData$CCLE.sampleid
-colData$batchid <- 1
-
-message(sprintf("Column data has %d rows and %d columns", nrow(colData), ncol(colData)))
-str(colData)
-
-
 summarizedExperimentLists <- data.table::copy(se_list)
 summarizedExperimentLists <- sapply(summarizedExperimentLists, function(x){
     x@colData <- MultiAssayExperiment::DataFrame(
@@ -82,9 +74,10 @@ summarizedExperimentLists <- sapply(summarizedExperimentLists, function(x){
 ExpList <- MultiAssayExperiment::ExperimentList(summarizedExperimentLists)
 message(paste("ExperimentList:", capture.output(show(ExpList)), sep = "\n\t"))
 
-
+data.table::setkeyv(sampleMetadata, "sampleid")
 # Create a sample map for each experiment in the ExperimentList
 sampleMapList <- lapply(summarizedExperimentLists, function(se){
+    stopifnot(colnames(se) %in% sampleMetadata$sampleid)
     data.frame(
         primary = colnames(se),
         colname = colnames(se),
@@ -104,7 +97,13 @@ metadata_list <- lapply(summarizedExperimentLists, function(se){
     metadata_
 })
 
+# create a data frame for coldata including sampleids and batch ids
+sampleMetadata <- sampleMetadata[!duplicated(cellosaurus.cellLineName),]
+colData <- as.data.frame(sampleMetadata, row.names = sampleMetadata$sampleid)
+colData$batchid <- 1
 
+message(sprintf("Column data has %d rows and %d columns", nrow(colData), ncol(colData)))
+str(colData)
 
 mae <- MultiAssayExperiment::MultiAssayExperiment(
     experiments = ExpList,

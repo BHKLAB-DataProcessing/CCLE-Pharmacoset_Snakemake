@@ -10,3 +10,6 @@ sandbox
 .cache
 rdata_files
 *.html
+TRASH
+resources/.RData
+.Rhistory
