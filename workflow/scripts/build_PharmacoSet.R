@@ -51,18 +51,12 @@ tre <- readRDS(INPUT$treatmentResponseExperiment)
 data.table::setkeyv(sampleMetadata, "CCLE.sampleid")
 sampleMetadata[, sampleid := cellosaurus.cellLineName]
 sampleMetadata <- sampleMetadata[!duplicated(sampleid),][!is.na(sampleid),]
-sampleMetadata[!is.na(sampleid),]
-
-
-
 
 sample <- as.data.frame(
     sampleMetadata, 
     row.names = sampleMetadata[, sampleid]
 )
 sample$unique.sampleid <- rownames(sample)
-
-
 
 treatmentNames <- c(
     treatmentMetadata[, unique(CCLE.treatmentid)],
