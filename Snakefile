@@ -23,14 +23,6 @@ include: "workflow/rules/cnv.smk"
 include: "workflow/rules/mutation.smk"
 
 
-"""
-snakemake \
-    --profile workflow/profiles/labserver \
-    make_RNASEQ_SE build_treatmentResponseExperiment \
-    annotate_treatmentMetadata annotate_sampleMetadata
-"""
-
-
 rule all:
     input:
         pset=results / "CCLE_PSet.RDS",
