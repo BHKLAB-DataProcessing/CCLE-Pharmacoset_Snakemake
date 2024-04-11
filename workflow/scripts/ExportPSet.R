@@ -23,7 +23,16 @@ suppressPackageStartupMessages(library(PharmacoGx, quietly = TRUE))
 message(paste("Loading: ", INPUT$pset, sep = "\n\t"))
 pset <- readRDS(INPUT$pset)
 
-export_dir <- OUTPUT$export_dir 
+export_dir <- OUTPUT$exports[[1]]
+
+# remove everything after exports/ and create the directory
+export_dir <- gsub("/[^/]*$", "", export_dir)
+dir.create(export_dir, recursive = TRUE, showWarnings = FALSE)
+
+
+message("Exporting the PharmacoSet object to the following directory:")
+message("\t", export_dir)
+
 
 ############################################################################
 # PARSING THE SLOTS OF THE PHARMACOSET OBJECT

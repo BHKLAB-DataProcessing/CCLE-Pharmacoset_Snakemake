@@ -22,16 +22,39 @@ include: "workflow/rules/rnaseq.smk"
 include: "workflow/rules/cnv.smk"
 include: "workflow/rules/mutation.smk"
 
+# Until the mtime() issue of gcs storage is resolved for directories, we need to explicitly
+# specificy all the export results.
+# this is tedious since we only know this after we go through the ExportPset Script
+
+exports = [
+    "annotation.json",
+    "curation/sample.tsv",
+    "curation/treatment.tsv",
+    "curation/tissue.tsv",
+    "treatment.tsv",
+    "sample.tsv",
+    "molecularProfiles/metadata.json",
+    "molecularProfiles/rnaseq/rnaseq.transcripts_tpm.tsv",
+    "molecularProfiles/rnaseq/rnaseq.genes_tpm.tsv",
+    "molecularProfiles/rnaseq/rnaseq.genes_counts.tsv",
+    "molecularProfiles/rnaseq/rnaseq.genes_rpkm.tsv",
+    "molecularProfiles/cnv/cnv.genes.tsv",
+    "molecularProfiles/mut/mut.genes.tsv",
+    "treatmentResponse/metadata.json",
+    "treatmentResponse/sensitivity.tsv",
+    "treatmentResponse/profiles.tsv"
+]
 
 rule all:
     input:
         pset=results / "CCLE_PSet.RDS",
     output:
-        export_dir=report(
-            directory("results/exports"),
-            patterns=["{path}/{file}.{ext}"],
-            category="PharmacoSetOutputs",
-        ),
+        # export_dir=report(
+        #     directory("results/exports"),
+        #     patterns=["{path}/{file}.{ext}"],
+        #     category="PharmacoSetOutputs",
+        # ),
+        exports = [results / "exports" / export for export in exports],
     log:
         logs / "all.log",
     script:
