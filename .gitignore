@@ -13,3 +13,6 @@ rdata_files
 TRASH
 resources/.RData
 .Rhistory
+# pixi environments
+.pixi
+
