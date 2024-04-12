@@ -16,6 +16,9 @@ if(exists("snakemake")){
 }
 load(file.path("resources/make_RNASEQ_SE.RData"))
 
+## ------------------- LOAD INPUT ------------------- ##
+# These are the file names that will be loaded
+
 file_names <- c(
     "transcripts_tpm",
     "genes_tpm",
@@ -23,6 +26,7 @@ file_names <- c(
     "genes_rpkm"
 )
 
+# Load the data, and assign it to the variable name, and print the structure
 for (i in seq_along(file_names)) {
     message(paste0("Loading ", file_names[i]))
     assign(file_names[i], data.table::fread(
@@ -35,34 +39,50 @@ for (i in seq_along(file_names)) {
 }
 
 message("Loading GENCODE")
+
+# This is the general GENCODE annotation
 gencode_GR <- rtracklayer::import(INPUT$GENCODE_Annotation)
 
-ccle_GR <- rtracklayer::import(INPUT$CCLE_GENCODE)
+# This is the GENCODE annotation provided by the CCLE website
+# UNUSED
+# ccle_GR <- rtracklayer::import(INPUT$CCLE_GENCODE)
 
 ########################################
 # Create Metadata list to be used 
+
+# General metadata to be used by all the SummarizedExperiments
+# When using this metadata, add the FILL_ME_IN values:
+    # datatype = "FILL_ME_IN",
+    # filename = "FILL_ME_IN",
+    # numSamples = "FILL_ME_IN",
+    # numGenes = "FILL_ME_IN"
 metadata <- list(
-    data_source = snakemake@config$molecularProfiles$rnaseq,
     annotation = "rnaseq",
-    gene_annotation = lapply(snakemake@config$metadata$referenceGenome, as.character),
+    class = "RangedSummarizedExperiment",
+    data_source = list(
+        description = "Read counts, TPM & FPKM-values for all sequenced models including cell lines and organoids.",
+        tool = "STAR v2.7.9a",
+        url = "https://cog.sanger.ac.uk/cmp/download/rnaseq_all_20220624.zip"
+    ),
     date = Sys.Date()
 )
-
-
 ########################################
 # genes_tpm
 message("Creating genes_tpm SummarizedExperiment")
 data.table::setkeyv(genes_tpm, "gene_id")
 stopifnot(length(setdiff(genes_tpm[, gene_id], gencode_GR$gene_id)) == 0)
+
+# remove the gene_id and transcript_ids columns and convert the rest to a matrix
 tpmMatrix <- as.matrix(
     genes_tpm[, !c("gene_id", "transcript_ids"), with=FALSE],
     rownames=genes_tpm[["gene_id"]]
 )
-rowRanges <- gencode_GR[gencode_GR$type == "gene", ]
 
 # align the rownames of tpmMatrix with the gene_id of gencode_GR
+rowRanges <- gencode_GR[gencode_GR$type == "gene", ]
 tpmMatrix <- tpmMatrix[rowRanges$gene_id, ]
 
+# create the SummarizedExperiment object
 genes_tpm_SE <- SummarizedExperiment::SummarizedExperiment(
     assays = list(
         exprs = tpmMatrix
@@ -72,18 +92,19 @@ genes_tpm_SE <- SummarizedExperiment::SummarizedExperiment(
         sampleid = colnames(tpmMatrix),
         # make a column called batchid that is full of NAs
         batchid = rep(NA, ncol(tpmMatrix))
-    ),
+    )
 )
-genes_tpm_SE@metadata <- c(
+message("Adding metadata to genes_tpm:")
+(genes_tpm_SE@metadata  <- c(
     metadata,
     list(
         datatype = "genes_tpm",
         filename = basename(INPUT$genes_tpm),
-        samples = ncol(tpmMatrix),
-        genes = nrow(tpmMatrix),
-        sessionInfo = sessionInfo()
+        numSamples = ncol(tpmMatrix),
+        numGenes = nrow(tpmMatrix)
     )
-)
+))
+
 show(genes_tpm_SE)
 rm(tpmMatrix, rowRanges)
 
@@ -114,16 +135,17 @@ transcripts_tpm_SE <- SummarizedExperiment::SummarizedExperiment(
         batchid = rep(NA, ncol(tpmMatrix))
     ),
 )
-transcripts_tpm_SE@metadata <- c(
+
+message("Adding metadata to transcripts_tpm:")
+(transcripts_tpm_SE@metadata <- c(
     metadata,
     list(
         datatype = "transcripts_tpm",
         filename = basename(INPUT$transcripts_tpm),
-        samples = ncol(tpmMatrix),
-        genes = nrow(tpmMatrix),
-        sessionInfo = sessionInfo()
+        numSamples = ncol(transcripts_tpm_SE),
+        numGenes = nrow(transcripts_tpm_SE)
     )
-)
+))
 show(transcripts_tpm_SE)
 rm(tpmMatrix, rowRanges)
 
@@ -155,16 +177,17 @@ genes_counts_SE <- SummarizedExperiment::SummarizedExperiment(
     ),
 )
 
-genes_counts_SE@metadata <- c(
+message("Adding metadata to genes_counts:")
+(genes_counts_SE@metadata <- c(
     metadata,
     list(
         datatype = "genes_counts",
         filename = basename(INPUT$genes_counts),
-        samples = ncol(countsMatrix),
-        genes = nrow(countsMatrix),
-        sessionInfo = sessionInfo()
+        numSamples = ncol(genes_counts_SE),
+        numGenes = nrow(genes_counts_SE)
     )
-)
+))
+
 show(genes_counts_SE)
 rm(countsMatrix, rowRanges)
 
@@ -196,16 +219,16 @@ genes_rpkm_SE <- SummarizedExperiment::SummarizedExperiment(
     ),
 )
 
-genes_rpkm_SE@metadata <- c(
+message("Adding metadata to genes_rpkm:")
+(genes_rpkm_SE@metadata <- c(
     metadata,
     list(
         datatype = "genes_rpkm",
         filename = basename(INPUT$genes_rpkm),
-        samples = ncol(rpkmMatrix),
-        genes = nrow(rpkmMatrix),
-        sessionInfo = sessionInfo()
+        numSamples = ncol(genes_rpkm_SE),
+        numGenes = nrow(genes_rpkm_SE)
     )
-)
+))
 
 show(genes_rpkm_SE)
 rm(rpkmMatrix, rowRanges)
@@ -240,21 +263,23 @@ all_metadata <- lapply(file_names, function(x){
     )
     return(rse_list[[paste0("rnaseq.", x)]]@metadata)   
 })
-names(all_metadata) <- file_names
 
-result <- lapply(names(all_metadata), function(x){
-    exclude_ <- c("sessionInfo", "gene_annotation", "annotation", "data_source", "date", "datatype")
-    subset_metadata <- all_metadata[[x]][!names(all_metadata[[x]]) %in% exclude_]
-    return(subset_metadata)
-})
-names(result) <- file_names
+# skipping this metadata step for now
+# names(all_metadata) <- file_names
 
-save_metadata <- c(
-    metadata,
-    list(
-        assay_metadata = result
-    )
-)
+# result <- lapply(names(all_metadata), function(x){
+#     exclude_ <- c("sessionInfo", "gene_annotation", "annotation", "data_source", "date", "datatype")
+#     subset_metadata <- all_metadata[[x]][!names(all_metadata[[x]]) %in% exclude_]
+#     return(subset_metadata)
+# })
+# names(result) <- file_names
 
-message("Saving Metadata to ", OUTPUT$metadata)
-jsonlite::write_json(save_metadata, OUTPUT$metadata, pretty = TRUE)
+# save_metadata <- c(
+#     metadata,
+#     list(
+#         assay_metadata = result
+#     )
+# )
+
+# message("Saving Metadata to ", OUTPUT$metadata)
+# jsonlite::write_json(save_metadata, OUTPUT$metadata, pretty = TRUE)

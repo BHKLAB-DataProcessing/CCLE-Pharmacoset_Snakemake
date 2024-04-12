@@ -13,8 +13,10 @@ if(exists("snakemake")){
     save.image(
         file.path("resources/", paste0(snakemake@rule, ".RData"))
     )
+}else{
+    load(file.path("resources/make_CNV_SE.RData"))
 }
-
+## ------------------- LOAD INPUT ------------------- ##
 
 message("Loading CNV data")
 cnvDt <- data.table::fread(
@@ -39,12 +41,6 @@ cnv_matrix <- as.matrix(
     rownames=cnvDt[["SYMBOL"]]
 )
 
-metadata <- list(
-    data_source = snakemake@config$molecularProfiles$cnv,
-    annotation = "cnv",
-    date = Sys.Date()
-)
-
 cnv_se <- SummarizedExperiment::SummarizedExperiment(
     assays = list(
         exprs = cnv_matrix
@@ -54,11 +50,26 @@ cnv_se <- SummarizedExperiment::SummarizedExperiment(
         sampleid = colnames(cnv_matrix),
         # make a column called batchid that is full of NAs
         batchid = rep(NA, ncol(cnv_matrix))
-    ),
-    metadata = metadata
+    )
 )
+
+message("Adding metadata to CNV SummarizedExperiment object")
+(cnv_se@metadata <- list(
+    annotation = "cnv",
+    datatype = "genes",
+    class = "RangedSummarizedExperiment",
+    filename = "CCLE_copynumber_byGene_2013-12-03.txt",
+    data_source = snakemake@config$molecularProfiles$cnv,
+    date = Sys.Date(),
+    numSamples = ncol(cnv_se),
+    numGenes = nrow(cnv_se)
+))
+
 print(cnv_se)
 
+
+## ------------------- SAVE OUTPUT ------------------- ##
+message("Saving CNV SummarizedExperiment object")
 se_list <- list(
     cnv.genes = cnv_se
 )

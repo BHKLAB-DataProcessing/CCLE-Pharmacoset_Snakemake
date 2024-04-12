@@ -55,8 +55,7 @@ rule make_RNASEQ_SE:
         genes_tpm = procdata / "rnaseq" / "CCLE_RNAseq_genes_tpm.tsv",
         transcripts_tpm = procdata / "rnaseq" / "CCLE_RNAseq_transcripts_tpm.tsv",
         genes_counts = procdata / "rnaseq" / "CCLE_RNAseq_genes_counts.tsv",
-        genes_rpkm = procdata / "rnaseq" / "CCLE_RNAseq_genes_rpkm.tsv",
-        metadata = procdata / "rnaseq" / "CCLE_RNAseq_metadata.json"
+        genes_rpkm = procdata / "rnaseq" / "CCLE_RNAseq_genes_rpkm.tsv"
     log:
         logs / "rnaseq" / "make_RNASEQ_SE.log"
     conda:

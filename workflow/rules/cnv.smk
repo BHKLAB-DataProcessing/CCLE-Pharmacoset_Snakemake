@@ -25,7 +25,7 @@ rule downloadCNV:
 
 rule make_CNV_SE:
     input:
-        cnv= rawdata / "cnv" / "CCLE_copynumber_byGene_2013-12-03.txt",
+        cnv = rawdata / "cnv" / "CCLE_copynumber_byGene_2013-12-03.txt",
     output:
         CNV_SE = procdata / "cnv" / "CNV_SE.RDS"
     log:

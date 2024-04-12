@@ -66,14 +66,6 @@ rowRanges <- GenomicRanges::makeGRangesFromDataFrame(
     strand.field = "Strand",
     na.rm=TRUE
 )
-metadata <- list(
-    data_source = snakemake@config$molecularProfiles$mutation,
-    annotation = "mut",
-    gene_annotation = lapply(snakemake@config$metadata$referenceGenome, as.character),
-    Center = unique(data$Center),
-    NCBIBuilds_used = unique(data$NCBI_Build),
-    date = Sys.Date()
-)
 
 message("Creating mutation SummarizedExperiment")
 # create a SummarizedExperimentObject
@@ -86,10 +78,24 @@ mutation_se <- SummarizedExperiment::SummarizedExperiment(
         sampleid = colnames(assay),
         # make a column called batchid that is full of NAs
         batchid = rep(NA, ncol(assay))
-    ),
-    metadata = metadata
+    )
 )
-print(show(mutation_se))
+
+# add metadata
+message("Adding metadata to mutation SummarizedExperiment")
+(mutation_se@metadata <- list(
+    annotation = "mut",
+    datatype = "genes",
+    class = "RangedSummarizedExperiment",
+    filename = "CCLE_Oncomap3_Assays_2012-04-09.csv",
+    data_source = snakemake@config$molecularProfiles$mutation$oncomapAssay,
+    date = Sys.Date(),
+    numSamples = ncol(mutation_se),
+    numGenes = nrow(mutation_se)
+))
+
+
+show(mutation_se)
 
 se_list <- list(
     mut.genes = mutation_se
