@@ -94,7 +94,6 @@ message("Adding metadata to mutation SummarizedExperiment")
     numGenes = nrow(mutation_se)
 ))
 
-
 show(mutation_se)
 
 se_list <- list(
