@@ -43,7 +43,7 @@ conda_env = "workflow/envs/PharmacoSet.yaml"
 
 rule all:
     input:
-        pset=results / "CCLE_PSet.RDS",
+        pset=results / "CCLE_PharmacoSet.RDS",
     localrule: True
     # output:
     #     exports = [results / "exports" / export for export in exports],
@@ -79,7 +79,7 @@ rule build_PharmacoSet:
         treatmentMetadata=rules.annotate_treatmentMetadata.output.treatmentMetadata,
         sampleMetadata=rules.annotate_sampleMetadata.output.sampleMetadata,
     output:
-        pset=results / "CCLE_PSet.RDS",
+        pset=results / "CCLE_PharmacoSet.RDS",
     log:
         logs / "build_PharmacoSet.log",
     conda:
