@@ -44,14 +44,15 @@ conda_env = "workflow/envs/PharmacoSet.yaml"
 rule all:
     input:
         pset=results / "CCLE_PSet.RDS",
-    output:
-        exports = [results / "exports" / export for export in exports],
-    log:
-        logs / "all.log",
-    conda:
-        conda_env
-    script:
-        scriptDir / "ExportPSet.R"
+    localrule: True
+    # output:
+    #     exports = [results / "exports" / export for export in exports],
+    # log:
+    #     logs / "all.log",
+    # conda:
+    #     conda_env
+    # script:
+    #     scriptDir / "ExportPSet.R"
 
 
 rule build_MultiAssayExperiment:
