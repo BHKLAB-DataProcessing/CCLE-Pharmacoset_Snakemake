@@ -39,6 +39,7 @@ exports = [
     "treatmentResponse/sensitivity.tsv",
     "treatmentResponse/profiles.tsv"
 ]
+conda_env = "workflow/envs/treatmentResponse.yaml"
 
 rule all:
     input:
@@ -47,6 +48,8 @@ rule all:
         exports = [results / "exports" / export for export in exports],
     log:
         logs / "all.log",
+    conda:
+        conda_env
     script:
         scriptDir / "ExportPSet.R"
 
@@ -63,6 +66,8 @@ rule build_MultiAssayExperiment:
         mae=results / "CCLE_MultiAssayExperiment.RDS",
     log:
         logs / "build_MultiAssayExperiment.log",
+    conda:
+        conda_env
     script:
         scriptDir / "build_MultiAssayExperiment.R"
 
@@ -77,15 +82,17 @@ rule build_PharmacoSet:
         pset=results / "CCLE_PSet.RDS",
     log:
         logs / "build_PharmacoSet.log",
+    conda:
+        conda_env
     script:
         scriptDir / "build_PharmacoSet.R"
 
 
-# Temporary, separate rule for building the report
-rule build_report:
-    input:
-        pset=results / "CCLE_PSet.RDS",
-    output:
-        results / "report.html",
-    script:
-        scriptDir / "report/report.Rmd"
+# # Temporary, separate rule for building the report
+# rule build_report:
+#     input:
+#         pset=results / "CCLE_PSet.RDS",
+#     output:
+#         results / "report.html",
+#     script:
+#         scriptDir / "report/report.Rmd"
