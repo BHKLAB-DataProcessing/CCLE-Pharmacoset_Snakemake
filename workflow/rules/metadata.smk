@@ -1,5 +1,6 @@
 from pathlib import Path
-configfile: "workflow/config/pipeline.yaml"
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -8,10 +9,6 @@ results = Path(config["directories"]["results"])
 logs = Path(config["directories"]["logs"])
 scripts = Path("../scripts")
 
-storage HTTP: 
-    provider = "http",
-    keep_local = True
-
 annotationGx_docker = config["containers"]["annotationGx"]
 
 ################################################################################################
@@ -19,7 +16,7 @@ annotationGx_docker = config["containers"]["annotationGx"]
 ################################################################################################
 rule downloadSampleMetadata:
     input:
-        sampleMetadata = storage.HTTP(config["metadata"]["sampleAnnotation"])
+        sampleMetadata = HTTP.remote(config["metadata"]["sampleAnnotation"])
     output:
         sampleMetadata = metadata / "sampleAnnotation.txt"
     shell:
@@ -29,7 +26,7 @@ rule downloadSampleMetadata:
 
 rule downloadTreatmentMetadata:
     input:
-        treatmentMetadata = storage.HTTP(config["metadata"]["treatmentAnnotation"]),
+        treatmentMetadata = HTTP.remote(config["metadata"]["treatmentAnnotation"]),
     output:
         treatmentAnnotation = metadata / "treatmentAnnotation.csv"
     shell:
@@ -54,7 +51,7 @@ rule preprocessMetadata:
 rule downloadGenomeFiles:
     input:
         CCLE_GENCODE = 
-            storage.HTTP(config["metadata"]["referenceGenome"]["url"]),
+            HTTP.remote(config["metadata"]["referenceGenome"]["url"]),
     output:
         CCLE_GENCODE = metadata / "referenceGenome" / "gencode.v19.genes.v7_model.patched_contigs.gtf.gz"
     shell:

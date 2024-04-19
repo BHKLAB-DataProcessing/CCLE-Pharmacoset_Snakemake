@@ -2,9 +2,6 @@
 import os
 from pathlib import Path
 
-storage HTTP:
-    provider = "http", 
-
 # HOW TO USE
 # in a rule, set 
 # input:

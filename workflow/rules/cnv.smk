@@ -1,6 +1,7 @@
 from pathlib import Path
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
 
-configfile: "workflow/config/pipeline.yaml"
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
 metadata = Path(config["directories"]["metadata"])
@@ -10,14 +11,11 @@ scripts = Path("../scripts")
 
 cnv = config["molecularProfiles"]["cnv"]
 
-storage HTTP: 
-    provider = "http",
-
 conda_env = "../envs/r-bioconductor.yaml"
 
 rule downloadCNV:
     input:
-        cnv = storage.http(cnv["copynumber_byGene"]["url"]),
+        cnv = HTTP.remote(cnv["copynumber_byGene"]["url"]),
     output:
         cnv = rawdata / "cnv" / "CCLE_copynumber_byGene_2013-12-03.txt",
     shell:

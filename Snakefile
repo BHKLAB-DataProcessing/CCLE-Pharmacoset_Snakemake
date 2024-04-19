@@ -1,11 +1,6 @@
 from pathlib import Path
 
-
-report: "workflow/report/workflow.rst"
-
-
-configfile: "workflow/config/pipeline.yaml"
-
+configfile: "config/pipeline.yaml"
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -49,11 +44,6 @@ rule all:
     input:
         pset=results / "CCLE_PSet.RDS",
     output:
-        # export_dir=report(
-        #     directory("results/exports"),
-        #     patterns=["{path}/{file}.{ext}"],
-        #     category="PharmacoSetOutputs",
-        # ),
         exports = [results / "exports" / export for export in exports],
     log:
         logs / "all.log",

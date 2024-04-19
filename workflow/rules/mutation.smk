@@ -1,6 +1,7 @@
 from pathlib import Path
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
 
-configfile: "workflow/config/pipeline.yaml"
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
 metadata = Path(config["directories"]["metadata"])
@@ -10,17 +11,15 @@ scripts = Path("../scripts")
 
 mutation = config["molecularProfiles"]["mutation"]
 
-storage HTTP: 
-    provider = "http",
 
 conda_env = "../envs/r-bioconductor.yaml"
 
 
 rule downloadMutation:
     input:
-        oncomapAssay = storage.http(mutation["oncomapAssay"]["url"]),
-        oncomap = storage.http(mutation["oncomap"]["url"]),
-        hybridCapture = storage.http(mutation["hybridCapture"]["url"]),
+        oncomapAssay = HTTP.remote(mutation["oncomapAssay"]["url"]),
+        oncomap = HTTP.remote(mutation["oncomap"]["url"]),
+        hybridCapture = HTTP.remote(mutation["hybridCapture"]["url"]),
     output:
         oncomapAssay=rawdata / "mutation" / "CCLE_Oncomap3_Assays_2012-04-09.csv",
         oncomap=rawdata / "mutation" / "CCLE_Oncomap3_2012-04-09.maf",

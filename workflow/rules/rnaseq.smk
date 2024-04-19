@@ -1,6 +1,7 @@
 from pathlib import Path
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
 
-configfile: "workflow/config/pipeline.yaml"
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
 metadata = Path(config["directories"]["metadata"])
@@ -9,18 +10,14 @@ logs = Path(config["directories"]["logs"])
 scripts = Path("../scripts")
 
 rnaseq = config["molecularProfiles"]["rnaseq"]
-
-storage HTTP: 
-    provider = "http",
-
 conda_env = "../envs/r-bioconductor.yaml"
 
 rule download_RNASEQ:
     input:
-        genes_rsem = storage.http(rnaseq["rsem-genes_tpm"]["url"]),
-        transcripts_rsem = storage.http(rnaseq["rsem-transcripts_tpm"]["url"]),
-        genes_counts = storage.http(rnaseq["genes_counts"]["url"]), 
-        genes_rpkm = storage.http(rnaseq["genes_rpkm"]["url"]),
+        genes_rsem = HTTP.remote(rnaseq["rsem-genes_tpm"]["url"]),
+        transcripts_rsem = HTTP.remote(rnaseq["rsem-transcripts_tpm"]["url"]),
+        genes_counts = HTTP.remote(rnaseq["genes_counts"]["url"]), 
+        genes_rpkm = HTTP.remote(rnaseq["genes_rpkm"]["url"]),
     output:
         genes_tpm=rawdata / "rnaseq" / "CCLE_RNAseq_rsem_genes_tpm_20180929.txt",
         transcripts_tpm=rawdata / "rnaseq" / "CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt",

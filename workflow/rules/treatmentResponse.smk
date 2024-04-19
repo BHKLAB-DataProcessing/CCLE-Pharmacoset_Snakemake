@@ -1,6 +1,7 @@
 from pathlib import Path
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
 
-configfile: "workflow/config/pipeline.yaml"
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
 metadata = Path(config["directories"]["metadata"])
@@ -10,9 +11,6 @@ scripts = Path("../scripts")
 
 # parse config
 treatmentResponse = config["treatmentResponse"]
-
-storage HTTP: 
-    provider = "http",
 
 conda_env = "../envs/treatmentResponse.yaml"
 
@@ -39,8 +37,8 @@ rule build_treatmentResponseExperiment:
 
 rule download_treatmentResponse:
     input:
-        rawdata = storage.HTTP(treatmentResponse["rawdata"]["url"]),
-        processed = storage.HTTP(treatmentResponse["processed"]["url"]),
+        rawdata = HTTP.remote(treatmentResponse["rawdata"]["url"]),
+        processed = HTTP.remote(treatmentResponse["processed"]["url"]),
     output:
         rawdata = rawdata / "treatmentResponse" / "CCLE_NP24.2009_Drug_data_2015.02.24.csv",
         processed = rawdata / "treatmentResponse" / "CCLE_GNF_data_090613.xls",
