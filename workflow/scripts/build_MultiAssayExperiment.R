@@ -62,7 +62,7 @@ se_list <- lapply(se_list, function(x){
 
 # Build MultiAssayExperiment
 # --------------------------
-summarizedExperimentLists <- data.table::copy(se_list)
+summarizedExperimentLists <- se_list
 summarizedExperimentLists <- sapply(summarizedExperimentLists, function(x){
     x@colData <- MultiAssayExperiment::DataFrame(
         sampleid = colnames(x),
@@ -84,6 +84,7 @@ sampleMapList <- lapply(summarizedExperimentLists, function(se){
         stringsAsFactors = FALSE
     )
 })
+
 names(sampleMapList) <- names(ExpList)
 message(paste("Sample map list:", capture.output(str(sampleMapList)), sep = "\n\t"))
 

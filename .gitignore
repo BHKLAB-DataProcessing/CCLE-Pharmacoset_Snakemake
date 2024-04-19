@@ -16,3 +16,5 @@ resources/.RData
 # pixi environments
 .pixi
 
+*.rds
+*.RDS
