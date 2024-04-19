@@ -17,7 +17,7 @@ if(exists("snakemake")){
 # load("resources/build_MultiAssayExperiment.RData")
 library(MultiAssayExperiment)
 library(data.table)
-exit()
+
 # Read in metadata
 # ----------------
 message(paste("Loading: ", INPUT$sampleMetadata, sep = "\n\t"))
