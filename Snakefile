@@ -69,8 +69,7 @@ rule build_MultiAssayExperiment:
     conda:
         conda_env
     script:
-        scriptDir / "build_MultiAssayExperiment.R"
-
+        "workflow/scripts/build_MultiAssayExperiment.R"
 
 rule build_PharmacoSet:
     input:
