@@ -39,7 +39,7 @@ exports = [
     "treatmentResponse/sensitivity.tsv",
     "treatmentResponse/profiles.tsv"
 ]
-conda_env = "workflow/envs/treatmentResponse.yaml"
+conda_env = "workflow/envs/PharmacoSet.yaml"
 
 rule all:
     input:
