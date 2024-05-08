@@ -6,12 +6,9 @@ This pipeline is considered `End-to-End` and will take you from downloading the 
 
 ![Status](./resources/status.png)
 
-The pipeline report can also [be viewed here](https://storage.cloud.google.com/orcestradata/CCLE-Pharmacoset_Snakemake/report.html?authuser=1)
-
 ## Requirements & Setup
 
 - [Snakemake](https://snakemake.readthedocs.io/en/stable/)
-
 
 ### Using Conda
 
@@ -32,22 +29,12 @@ snakemake --version
 
 ### Using Pixi
 
-
 ```bash
 pixi install
 ```
 
-This makes sure that the lock is synchronized and version controlled. 
+This makes sure that the lock is synchronized and version controlled.
 
-## Usage
-
-To add packages to the `default` environment:
-
-```bash
-pixi add pandas
-```
-
-### To run a command in the environment
 
 ```bash
 pixi run snakemake --dryrun
@@ -63,7 +50,7 @@ pixi shell
 
 ## Running the pipeline
 
-``` bash   
+``` bash
 snakemake --profile workflow/profiles/local --cores <NUMBER_OF_CORES>
 ```
 
@@ -76,6 +63,14 @@ snakemake --profile workflow/profiles/gcp
 ```
 
 ## So far, the following has been implemented
+
+### Using pixi
+
+Running a single pixi command will run all the below commands:
+
+``` bash
+pixi run graphs
+```
 
 ### Rulegraph
 

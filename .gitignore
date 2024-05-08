@@ -17,4 +17,7 @@ resources/.RData
 .pixi
 
 *.rds
-*.RDS
+*.RDS# pixi environments
+.pixi
+*.egg-info
+
