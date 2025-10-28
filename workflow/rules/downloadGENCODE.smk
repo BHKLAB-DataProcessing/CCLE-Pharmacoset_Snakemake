@@ -49,7 +49,7 @@ def get_gencode_annotation(ref_build, gencode_release):
         # if ref_build == "GRCh37":
             # print("GENCODE release 22 and below do not have GRCh37 mappings")
         ftp = f"ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_{gencode_release}/gencode.v{gencode_release}.annotation.gtf.gz"
-    return "http://" + ftp
+    return "https://" + ftp
 
 
 rule getGENCODEannotation:
@@ -84,7 +84,7 @@ def get_gencode_genome(ref_build, gencode_release, species="human"):
         elif int(gencode_release) == 22:
             ftp_genome = "http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_22/GRCh38.primary_assembly.genome.fa.gz"
 
-    return "http://" + ftp_genome
+    return "https://" + ftp_genome
 
 
 rule getGENCODEgenome:
@@ -112,7 +112,7 @@ def get_gencode_transcriptome(ref_build, gencode_release):
         if ref_build == "GRCh37":
             print("GENCODE release 22 and below do not have GRCh37 mappings")
         ftp = f"ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_{gencode_release}/gencode.v{gencode_release}.pc_transcripts.fa.gz"
-    return "http://" + ftp
+    return "https://" + ftp
 
 
 rule getGENCODEtranscriptome:
