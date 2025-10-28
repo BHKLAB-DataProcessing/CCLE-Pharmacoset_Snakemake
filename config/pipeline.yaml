@@ -71,3 +71,7 @@ molecularProfiles:
       tool: TODO::(add tool)
       url: "https://data.broadinstitute.org/ccle_legacy_data/dna_copy_number/CCLE_copynumber_byGene_2013-12-03.txt.gz"
   
+  rppa:
+    harmonized_rppa:
+      description: Harmonized CCLE RPPA protein abundance (log2 ratio) matrix (Harmonized Public Proteomics 24Q4)
+      url: "https://storage.googleapis.com/depmap-external-downloads/harmonized-public-proteomics-02cc.1/harmonized_RPPA_CCLE.csv?GoogleAccessId=depmap-external-downloads%40broad-achilles.iam.gserviceaccount.com&Expires=1762530464&Signature=MCOrJAHMAx1HALO%252B6aNeeeJGSM2sE3J6rUHi%252F6r6Y2EIef0OkDtgRyQs8QSJ7Zy5pgFCL8qneEs3ZrfnsGKp9%252Bsk%252Bk5iFkhHAJwt0xmZGJ27yZIu1ltunqKLbI0Y88cmmVuUqomkXgLMh%252FS9bqNOO5aTidLsoEruhwc%252FWZinEpf3YjGPuNG%252Bfssx1FTozxu3we1L8ItBEjxfdtLuOX1%252F%252Fu9wBnN4XLOP3YsqX7JqIPsSZFOZUQBz3DLgHhoQ5UHh4I3%252BrvytDPhwvArPYJ4IlgQaLNBE56k1a7y3sL5D%252Bg7sRfM8VesbNooZtWD2X8NoR8O4%252Fl6OHpSmJQ908fZeIQ%3D%3D&userProject=broad-achilles"
