@@ -71,10 +71,39 @@ se_list <- lapply(se_list, function(x) {
 # Build MultiAssayExperiment
 # --------------------------
 summarizedExperimentLists <- se_list
-summarizedExperimentLists <- sapply(summarizedExperimentLists, function(x) {
+summarizedExperimentLists <- lapply(summarizedExperimentLists, function(x) {
+  existing_cd <- as.data.frame(SummarizedExperiment::colData(x))
+
+  if (!nrow(existing_cd)) {
+    existing_cd <- data.frame(sampleid = colnames(x))
+  }
+
+  original_sampleid <- if ("sampleid" %in% names(existing_cd)) {
+    as.character(existing_cd$sampleid)
+  } else {
+    colnames(x)
+  }
+
+  if (!"dataset_sample_id" %in% names(existing_cd)) {
+    existing_cd$dataset_sample_id <- original_sampleid
+  }
+
+  if (!"ccle_sample_id" %in% names(existing_cd)) {
+    existing_cd$ccle_sample_id <- original_sampleid
+  }
+
+  existing_cd$sampleid <- colnames(x)
+
+  if (!"batchid" %in% names(existing_cd)) {
+    existing_cd$batchid <- NA
+  }
+
+  existing_cd$batchid <- rep(existing_cd$batchid, length.out = ncol(x))
+
+  rownames(existing_cd) <- colnames(x)
+
   x@colData <- MultiAssayExperiment::DataFrame(
-    sampleid = colnames(x),
-    batchid = rep(NA, ncol(x)),
+    existing_cd,
     row.names = colnames(x)
   )
   x

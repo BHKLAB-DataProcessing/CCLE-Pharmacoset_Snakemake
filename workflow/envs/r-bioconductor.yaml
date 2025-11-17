@@ -13,3 +13,4 @@ dependencies:
   - bioconductor-org.hs.eg.db
   - r-r.utils=2.12.3
   - r-jsonlite
+  - r-readxl
