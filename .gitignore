@@ -1,23 +1,14 @@
+# pipelines and environments
+.pixi
+.snakemake
+
+# data
 rawdata
 procdata
-metadata/*
+metadata
 results
-.snakemake/
-logs/
-sandbox
-*.RData
-.RDataTmp
-.cache
-rdata_files
-*.html
-TRASH
-resources/.RData
-.Rhistory
-# pixi environments
-.pixi
+resources/*.RData
 
-*.rds
-*.RDS# pixi environments
-.pixi
-*.egg-info
-
+# local directories
+logs
+scratch
