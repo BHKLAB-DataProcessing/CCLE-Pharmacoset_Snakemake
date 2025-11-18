@@ -11,85 +11,90 @@ if (exists("snakemake")) {
     sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources/", paste0(snakemake@rule, ".RData"))
+    file.path("snapshots/", paste0(snakemake@rule, ".RData"))
   )
+} else {
+  if (file.exists(file.path("snapshots/", paste0(snakemake@rule, ".RData")))) {
+    load(file.path("snapshots/", paste0(snakemake@rule, ".RData")))
+  }
 }
 load(file.path("resources/make_Mutation_SE.RData"))
 
 message("Loading mutation data")
 input <- readRDS(INPUT$preprocessedMutation)
 assay <- input$assay
-data <- data.table::as.data.table(input$data)
+gene_meta <- data.table::as.data.table(input$gene_meta)
 
-# names(data)
-#  [1] "Hugo_Symbol"                   "Entrez_Gene_Id"
-#  [3] "Center"                        "NCBI_Build"
-#  [5] "Chromosome"                    "Start_position"
-#  [7] "End_position"                  "Strand"
-#  [9] "Variant_Classification"        "Variant_Type"
-# [11] "Reference_Allele"              "Tumor_Seq_Allele1"
-# [13] "Tumor_Seq_Allele2"             "dbSNP_RS"
-# [15] "dbSNP_Val_Status"              "Tumor_Sample_Barcode"
-# [17] "Matched_Norm_Sample_Barcode"   "Match_Norm_Seq_Allele1"
-# [19] "Match_Norm_Seq_Allele2"        "Tumor_Validation_Allele1"
-# [21] "Tumor_Validation_Allele2"      "Match_Norm_Validation_Allele1"
-# [23] "Match_Norm_Validation_Allele2" "Verification_Status"
-# [25] "Validation_Status"             "Mutation_Status"
-# [27] "Sequencing_Phase"              "Genome_Change"
-# [29] "Annotation_Transcript"         "Transcript_Strand"
-# [31] "cDNA_Change"                   "Codon_Change"
-# [33] "Protein_Change"                "Other_Transcripts"
-# [35] "Refseq_mRNA_Id"                "Refseq_prot_Id"
-# [37] "SwissProt_acc_Id"              "SwissProt_entry_Id"
-# [39] "Description"                   "UniProt_AApos"
-# [41] "UniProt_Region"                "UniProt_Site"
-mut <- data.table::as.data.table(data)
-tmp <- mut[, .(
-  Hugo_Symbol,
-  Transcript_Strand,
-  SwissProt_entry_Id,
-  SwissProt_acc_Id,
-  UniProt_AApos,
-  UniProt_Region,
-  UniProt_Site,
-  Description
-)]
-# if duplicated Hugo_Symbol, keep the first one without a NA Transcript_Strand or SwissProt_entry_Id
-tmp <- tmp[
-  !duplicated(Hugo_Symbol) |
-    (is.na(Transcript_Strand) & is.na(SwissProt_entry_Id)),
-]
-
-# create variable that drops all mutation specific columns
-rrangeData <- data[,
-  .(
-    Hugo_Symbol,
-    Entrez_Gene_Id,
-    Center,
-    NCBI_Build,
-    Chromosome,
-    Start_position,
-    End_position,
-    Strand
-  )
-]
-rrangeData <- rrangeData[!duplicated(Hugo_Symbol), ]
-rrangeData <- merge(rrangeData, tmp, by = "Hugo_Symbol", all.x = TRUE)
-
-
-rowRanges <- GenomicRanges::makeGRangesFromDataFrame(
-  df = rrangeData,
-  keep.extra.columns = TRUE,
-  seqnames.field = "Hugo_Symbol",
-  start.field = "Start_position",
-  end.field = "End_position",
-  strand.field = "Strand",
-  na.rm = TRUE
+message("Loading GENCODE annotation for ranges")
+gencode_gr <- rtracklayer::import(INPUT$GENCODE_Annotation)
+gencode_genes <- gencode_gr[gencode_gr$type == "gene", ]
+gencode_dt <- data.table::data.table(
+  gene_symbol = gencode_genes$gene_name,
+  gene_id = sub("\\.\\d+$", "", gencode_genes$gene_id),
+  seqnames = as.character(GenomicRanges::seqnames(gencode_genes)),
+  start = BiocGenerics::start(gencode_genes),
+  end = BiocGenerics::end(gencode_genes)
 )
+data.table::setkey(gencode_dt, gene_id)
+gencode_by_symbol <- data.table::copy(gencode_dt)
+data.table::setkey(gencode_by_symbol, gene_symbol)
+
+lookup_ids <- sub("\\.\\d+$", "", gene_meta$EnsemblGeneID)
+gene_meta[, EnsemblGeneID := lookup_ids]
+
+match_by_id <- gencode_dt[lookup_ids]
+missing_id <- which(is.na(match_by_id$gene_id))
+
+if (length(missing_id)) {
+  sym_hits <- gencode_by_symbol[gene_meta$HugoSymbol[missing_id]]
+  replaceable <- which(!is.na(sym_hits$gene_id))
+  match_by_id[missing_id[replaceable]] <- sym_hits[replaceable]
+}
+
+available <- !is.na(match_by_id$gene_id)
+if (!all(available)) {
+  dropped <- gene_meta$HugoSymbol[!available]
+  preview <- head(dropped, 20)
+  warning(sprintf(
+    "Dropping %d genes without GENCODE mapping (showing up to 20): %s",
+    length(dropped),
+    paste(preview, collapse = ", ")
+  ))
+}
+
+match_by_id <- match_by_id[available]
+assay <- assay[available, , drop = FALSE]
+gene_meta <- gene_meta[available]
+
+complete_coords <- !is.na(match_by_id$start) & !is.na(match_by_id$end)
+if (!all(complete_coords)) {
+  dropped <- gene_meta$HugoSymbol[!complete_coords]
+  preview <- head(dropped, 20)
+  warning(sprintf(
+    "Dropping %d genes with missing coordinates (showing up to 20): %s",
+    length(dropped),
+    paste(preview, collapse = ", ")
+  ))
+}
+
+match_by_id <- match_by_id[complete_coords]
+assay <- assay[complete_coords, , drop = FALSE]
+gene_meta <- gene_meta[complete_coords]
+
+message("Creating gene-level rowRanges from GENCODE")
+rowRanges <- GenomicRanges::GRanges(
+  seqnames = S4Vectors::Rle(match_by_id$seqnames),
+  ranges = IRanges::IRanges(start = match_by_id$start, end = match_by_id$end),
+  strand = S4Vectors::Rle("*"),
+  gene_symbol = gene_meta$HugoSymbol,
+  EntrezGeneID = gene_meta$EntrezGeneID,
+  EnsemblGeneID = gene_meta$EnsemblGeneID
+)
+names(rowRanges) <- gene_meta$HugoSymbol
 
 message("Creating mutation SummarizedExperiment")
-# create a SummarizedExperimentObject
 mutation_se <- SummarizedExperiment::SummarizedExperiment(
   assays = list(
     exprs = assay
@@ -97,19 +102,17 @@ mutation_se <- SummarizedExperiment::SummarizedExperiment(
   rowRanges = rowRanges,
   colData = data.table::data.table(
     sampleid = colnames(assay),
-    # make a column called batchid that is full of NAs
     batchid = rep(NA, ncol(assay))
   )
 )
 
-# add metadata
 message("Adding metadata to mutation SummarizedExperiment")
 (mutation_se@metadata <- list(
   annotation = "mut",
   datatype = "genes",
   class = "RangedSummarizedExperiment",
-  filename = "CCLE_Oncomap3_Assays_2012-04-09.csv",
-  data_source = snakemake@config$molecularProfiles$mutation$oncomapAssay,
+  filename = basename(INPUT$preprocessedMutation),
+  data_source = snakemake@config$molecularProfiles$mutation$somatic_mutations,
   date = Sys.Date(),
   numSamples = ncol(mutation_se),
   numGenes = nrow(mutation_se)

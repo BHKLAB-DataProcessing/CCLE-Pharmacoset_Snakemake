@@ -1,6 +1,5 @@
 from pathlib import Path
-from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
-HTTP = HTTPRemoteProvider()
+from workflow.utils import filename_from_url
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -10,35 +9,52 @@ logs = Path(config["directories"]["logs"])
 scripts = Path("../scripts")
 
 rnaseq = config["molecularProfiles"]["rnaseq"]
+genes_tpm_gz = filename_from_url(rnaseq["rsem-genes_tpm"]["url"])
+transcripts_tpm_gz = filename_from_url(rnaseq["rsem-transcripts_tpm"]["url"])
+genes_counts_name = filename_from_url(rnaseq["genes_counts"]["url"])
+genes_rpkm_name = filename_from_url(rnaseq["genes_rpkm"]["url"])
+
+genes_tpm_name = Path(genes_tpm_gz).with_suffix("").name
+transcripts_tpm_name = Path(transcripts_tpm_gz).with_suffix("").name
+gencode_name = filename_from_url(config["metadata"]["referenceGenome"]["url"])
+
 conda_env = "../envs/r-bioconductor.yaml"
 
 rule download_RNASEQ:
-    input:
-        genes_rsem = HTTP.remote(rnaseq["rsem-genes_tpm"]["url"]),
-        transcripts_rsem = HTTP.remote(rnaseq["rsem-transcripts_tpm"]["url"]),
-        genes_counts = HTTP.remote(rnaseq["genes_counts"]["url"]), 
-        genes_rpkm = HTTP.remote(rnaseq["genes_rpkm"]["url"]),
     output:
-        genes_tpm=rawdata / "rnaseq" / "CCLE_RNAseq_rsem_genes_tpm_20180929.txt",
-        transcripts_tpm=rawdata / "rnaseq" / "CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt",
-        genes_counts=rawdata / "rnaseq" / "CCLE_RNAseq_genes_counts_20180929.gct.gz",
-        genes_rpkm=rawdata / "rnaseq" / "CCLE_RNAseq_genes_rpkm_20180929.gct.gz",
+        genes_tpm=rawdata / "rnaseq" / genes_tpm_name,
+        transcripts_tpm=rawdata / "rnaseq" / transcripts_tpm_name,
+        genes_counts=rawdata / "rnaseq" / genes_counts_name,
+        genes_rpkm=rawdata / "rnaseq" / genes_rpkm_name,
+    params:
+        genes_rsem_url=rnaseq["rsem-genes_tpm"]["url"],
+        transcripts_rsem_url=rnaseq["rsem-transcripts_tpm"]["url"],
+        genes_counts_url=rnaseq["genes_counts"]["url"],
+        genes_rpkm_url=rnaseq["genes_rpkm"]["url"],
     log:
         logs / "rnaseq" / "download_RNASEQ.log"
     shell:
         """
-        gunzip {input.genes_rsem} -c > {output.genes_tpm} && \
-        gunzip {input.transcripts_rsem} -c > {output.transcripts_tpm} && \
-        mv {input.genes_rpkm} {output.genes_rpkm} && \
-        mv {input.genes_counts} {output.genes_counts} > {log} 2>&1 
+        set -euo pipefail
+        mkdir -p $(dirname {output.genes_tpm}) $(dirname {log})
+        {{
+          echo "[download] Fetching genes TPM {params.genes_rsem_url}"
+          curl -L "{params.genes_rsem_url}" | gunzip -c > "{output.genes_tpm}"
+          echo "[download] Fetching transcripts TPM {params.transcripts_rsem_url}"
+          curl -L "{params.transcripts_rsem_url}" | gunzip -c > "{output.transcripts_tpm}"
+          echo "[download] Fetching genes RPKM {params.genes_rpkm_url}"
+          curl -L "{params.genes_rpkm_url}" -o "{output.genes_rpkm}"
+          echo "[download] Fetching genes counts {params.genes_counts_url}"
+          curl -L "{params.genes_counts_url}" -o "{output.genes_counts}"
+        }} > {log} 2>&1
         """
 
 rule make_RNASEQ_SE:
     input:
-        genes_tpm = rawdata / "rnaseq" / "CCLE_RNAseq_rsem_genes_tpm_20180929.txt",
-        transcripts_tpm = rawdata / "rnaseq" / "CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt",
-        genes_counts = rawdata / "rnaseq" / "CCLE_RNAseq_genes_counts_20180929.gct.gz",
-        genes_rpkm = rawdata / "rnaseq" / "CCLE_RNAseq_genes_rpkm_20180929.gct.gz",
+        genes_tpm = rawdata / "rnaseq" / genes_tpm_name,
+        transcripts_tpm = rawdata / "rnaseq" / transcripts_tpm_name,
+        genes_counts = rawdata / "rnaseq" / genes_counts_name,
+        genes_rpkm = rawdata / "rnaseq" / genes_rpkm_name,
         GENCODE_Annotation = 
             # Function made available from downloadGENCODE.smk
             gencodeAnnotation(
@@ -46,7 +62,7 @@ rule make_RNASEQ_SE:
                 ref_build=config["metadata"]["referenceGenome"]["build"],
                 gencode_ver=config["metadata"]["referenceGenome"]["release"],
                 species=config["metadata"]["referenceGenome"]["species"]),
-        CCLE_GENCODE = metadata / "referenceGenome" / "gencode.v19.genes.v7_model.patched_contigs.gtf.gz"
+        CCLE_GENCODE = metadata / "referenceGenome" / gencode_name
     output:
         rse_list = procdata / "rnaseq" / "CCLE_RNASEQ_rse_list.RDS",
         genes_tpm = procdata / "rnaseq" / "CCLE_RNAseq_genes_tpm.tsv",

@@ -11,7 +11,12 @@ if (exists("snakemake")) {
     sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources/", paste0(snakemake@rule, ".RData"))
+    file.path("snapshots/", paste0(snakemake@rule, ".RData"))
   )
+} else {
+  if (file.exists(file.path("snapshots/", paste0(snakemake@rule, ".RData")))) {
+    load(file.path("snapshots/", paste0(snakemake@rule, ".RData")))
+  }
 }

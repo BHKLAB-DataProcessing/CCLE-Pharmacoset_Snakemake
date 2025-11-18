@@ -9,11 +9,14 @@ if (exists("snakemake")) {
     sink(LOG[[1]], split = TRUE, type = c("output", "message"))
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources", paste0(snakemake@rule, ".RData"))
+    file.path("snapshots", paste0(snakemake@rule, ".RData"))
   )
 } else {
-  load(file.path("resources", "make_MassSpec_SE.RData"))
+  if (file.exists(file.path("snapshots", "make_MassSpec_SE.RData"))) {
+    load(file.path("snapshots", "make_MassSpec_SE.RData"))
+  }
 }
 
 suppressPackageStartupMessages({
