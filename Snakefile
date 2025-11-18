@@ -16,6 +16,8 @@ include: "workflow/rules/treatmentResponse.smk"
 include: "workflow/rules/rnaseq.smk"
 include: "workflow/rules/cnv.smk"
 include: "workflow/rules/mutation.smk"
+include: "workflow/rules/rppa.smk"
+include: "workflow/rules/massspec.smk"
 
 # Until the mtime() issue of gcs storage is resolved for directories, we need to explicitly
 # specificy all the export results.
@@ -61,6 +63,8 @@ rule build_MultiAssayExperiment:
             rules.make_RNASEQ_SE.output.rse_list,
             rules.make_CNV_SE.output.CNV_SE,
             rules.make_Mutation_SE.output.processedMutationSE,
+            rules.make_RPPA_SE.output.rppa_se,
+            rules.make_MassSpec_SE.output.massspec_se,
         ],
         sampleMetadata=rules.annotate_sampleMetadata.output.sampleMetadata,
     output:

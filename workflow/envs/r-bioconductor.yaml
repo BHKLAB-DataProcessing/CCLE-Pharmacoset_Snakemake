@@ -9,5 +9,8 @@ dependencies:
   - bioconductor-genomicranges=1.54.1
   - bioconductor-rtracklayer=1.62
   - bioconductor-pharmacogx=3.6.0
+  - bioconductor-annotationdbi
+  - bioconductor-org.hs.eg.db
   - r-r.utils=2.12.3
   - r-jsonlite
+  - r-readxl

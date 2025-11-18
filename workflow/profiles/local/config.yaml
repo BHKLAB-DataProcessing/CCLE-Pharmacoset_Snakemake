@@ -4,3 +4,4 @@ rerun-incomplete: True
 printshellcmds: True
 use-conda: True
 use-singularity: True
+conda-frontend: mamba
