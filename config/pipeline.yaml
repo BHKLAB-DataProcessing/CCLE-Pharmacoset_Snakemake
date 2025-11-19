@@ -74,3 +74,18 @@ molecularProfiles:
       release: '2021-07-15'
       url: https://gygi.hms.harvard.edu/data/ccle/protein_quant_current_normalized.csv.gz
       sample_info_url: https://gygi.hms.harvard.edu/data/ccle/Table_S1_Sample_Information.xlsx
+
+  epigenetics:
+    methylation_rrbs:
+      tss_1kb:
+        description: RRBS promoter methylation aggregated over 1kb windows upstream of transcription start sites.
+        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_TSS1kb_20181022.txt.gz&bucket=depmap-external-downloads
+      tss_cpg_clusters:
+        description: RRBS promoter methylation summarized over CpG clusters proximal to TSS regions.
+        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_tss_CpG_clusters_20181022.txt.gz&bucket=depmap-external-downloads
+      cgi_cpg_clusters:
+        description: RRBS CpG island methylation summarized across CpG clusters.
+        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_cgi_CpG_clusters_20181119.txt.gz&bucket=depmap-external-downloads
+      enhancer_cpg_clusters:
+        description: RRBS methylation across CpG clusters overlapping VISTA enhancer annotations.
+        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_enh_CpG_clusters_20181119.txt.gz&bucket=depmap-external-downloads
