@@ -26,6 +26,8 @@ suppressPackageStartupMessages({
   library(readxl)
 })
 
+source(file.path("workflow", "scripts", "utils", "uniprot_mapping.R"))
+
 `%||%` <- function(x, y) {
   if (!is.null(x)) x else y
 }
@@ -109,6 +111,66 @@ setcolorder(
   feature_dt,
   c("feature_id", setdiff(names(feature_dt), "feature_id"))
 )
+
+feature_dt[, gene_symbol_primary := canonical_gene_symbol(Gene_Symbol)]
+
+symbols_to_lookup <- unique(
+  feature_dt[
+    (is.na(Uniprot_Acc) | Uniprot_Acc == "") &
+      !is.na(gene_symbol_primary),
+    gene_symbol_primary
+  ]
+)
+
+uniprot_map <- if (length(symbols_to_lookup)) {
+  map_uniprot_symbols(symbols_to_lookup)
+} else {
+  data.table::data.table(
+    gene_symbol = character(),
+    uniprot_accession = character(),
+    uniprot_entry = character(),
+    uniprot_protein_name = character()
+  )
+}
+
+feature_dt[
+  ,
+  `:=`(
+    uniprot_accession = uniprot_map[
+      gene_symbol_primary,
+      on = "gene_symbol",
+      uniprot_accession
+    ],
+    uniprot_entry = uniprot_map[
+      gene_symbol_primary,
+      on = "gene_symbol",
+      uniprot_entry
+    ],
+    uniprot_protein_name = uniprot_map[
+      gene_symbol_primary,
+      on = "gene_symbol",
+      uniprot_protein_name
+    ]
+  )
+]
+
+feature_dt[
+  ,
+  uniprot_accession := coalesce_non_empty(Uniprot_Acc, uniprot_accession)
+]
+
+feature_dt[
+  ,
+  uniprot_entry := coalesce_non_empty(Uniprot, uniprot_entry)
+]
+
+feature_dt[
+  ,
+  uniprot_protein_name := coalesce_non_empty(
+    uniprot_protein_name,
+    Description
+  )
+]
 
 expr_matrix <- as.matrix(quant_dt[, ..expr_cols])
 storage.mode(expr_matrix) <- "numeric"
