@@ -19,6 +19,7 @@ include: "workflow/rules/mutation.smk"
 include: "workflow/rules/rppa.smk"
 include: "workflow/rules/massspec.smk"
 include: "workflow/rules/epigenetics.smk"
+include: "workflow/rules/metabolomics.smk"
 
 # Until the mtime() issue of gcs storage is resolved for directories, we need to explicitly
 # specificy all the export results.
@@ -67,6 +68,7 @@ rule build_MultiAssayExperiment:
             rules.make_RPPA_SE.output.rppa_se,
             rules.make_MassSpec_SE.output.massspec_se,
             rules.make_Methylation_SE.output.methylation_se_list,
+            rules.make_Metabolomics_SE.output.metabolomics_se,
         ],
         sampleMetadata=rules.annotate_sampleMetadata.output.sampleMetadata,
     output:

@@ -89,3 +89,8 @@ molecularProfiles:
       enhancer_cpg_clusters:
         description: RRBS methylation across CpG clusters overlapping VISTA enhancer annotations.
         url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_enh_CpG_clusters_20181119.txt.gz&bucket=depmap-external-downloads
+
+  metabolomics:
+    ccle_2019:
+      description: CCLE metabolomics profiles (clean, imputed) quantified via LC-MS across 225 metabolites in 928 cell lines.
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_metabolomics_20190502.csv&bucket=depmap-external-downloads
