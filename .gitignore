@@ -7,8 +7,8 @@ rawdata
 procdata
 metadata
 results
-resources/*.RData
 
 # local directories
 logs
 scratch
+snapshots

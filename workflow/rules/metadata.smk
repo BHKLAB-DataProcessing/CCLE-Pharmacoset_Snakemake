@@ -1,6 +1,5 @@
 from pathlib import Path
-from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
-HTTP = HTTPRemoteProvider()
+from workflow.utils import filename_from_url
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -9,35 +8,43 @@ results = Path(config["directories"]["results"])
 logs = Path(config["directories"]["logs"])
 scripts = Path("../scripts")
 
+sample_annotation_name = filename_from_url(config["metadata"]["sampleAnnotation"])
+treatment_annotation_name = filename_from_url(config["metadata"]["treatmentAnnotation"])
+gencode_name = filename_from_url(config["metadata"]["referenceGenome"]["url"])
+
 annotationGx_docker = config["containers"]["annotationGx"]
 
 ################################################################################################
 # DOWNLOAD RULES
 ################################################################################################
 rule downloadSampleMetadata:
-    input:
-        sampleMetadata = HTTP.remote(config["metadata"]["sampleAnnotation"])
     output:
-        sampleMetadata = metadata / "sampleAnnotation.txt"
+        sampleMetadata = metadata / sample_annotation_name
+    params:
+        url=config["metadata"]["sampleAnnotation"]
     shell:
         """
-        mv {input.sampleMetadata} {output.sampleMetadata}
+        set -euo pipefail
+        mkdir -p $(dirname {output.sampleMetadata})
+        curl -L "{params.url}" -o "{output.sampleMetadata}"
         """
 
 rule downloadTreatmentMetadata:
-    input:
-        treatmentMetadata = HTTP.remote(config["metadata"]["treatmentAnnotation"]),
     output:
-        treatmentAnnotation = metadata / "treatmentAnnotation.csv"
+        treatmentAnnotation = metadata / treatment_annotation_name
+    params:
+        url=config["metadata"]["treatmentAnnotation"]
     shell:
         """
-        mv {input.treatmentMetadata} {output.treatmentAnnotation}
+        set -euo pipefail
+        mkdir -p $(dirname {output.treatmentAnnotation})
+        curl -L "{params.url}" -o "{output.treatmentAnnotation}"
         """
 
 rule preprocessMetadata:
     input:
-        sampleAnnotation = metadata / "sampleAnnotation.txt",
-        treatmentAnnotation = metadata / "treatmentAnnotation.csv"
+        sampleAnnotation = metadata / sample_annotation_name,
+        treatmentAnnotation = metadata / treatment_annotation_name
     output:
         treatmentMetadata = procdata / metadata / "preprocessed_treatmentMetadata.tsv",
         sampleMetadata = procdata / metadata / "preprocessed_sampleMetadata.tsv",
@@ -49,14 +56,15 @@ rule preprocessMetadata:
         scripts / "metadata/preprocessMetadata.R"
 
 rule downloadGenomeFiles:
-    input:
-        CCLE_GENCODE = 
-            HTTP.remote(config["metadata"]["referenceGenome"]["url"]),
     output:
-        CCLE_GENCODE = metadata / "referenceGenome" / "gencode.v19.genes.v7_model.patched_contigs.gtf.gz"
+        CCLE_GENCODE = metadata / "referenceGenome" / gencode_name
+    params:
+        url=config["metadata"]["referenceGenome"]["url"]
     shell:
         """
-        mv {input.CCLE_GENCODE} {output.CCLE_GENCODE}
+        set -euo pipefail
+        mkdir -p $(dirname {output.CCLE_GENCODE})
+        curl -L "{params.url}" -o "{output.CCLE_GENCODE}"
         """
 
 ################################################################################################

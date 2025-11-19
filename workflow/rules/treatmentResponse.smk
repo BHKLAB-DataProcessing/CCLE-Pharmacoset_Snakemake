@@ -1,6 +1,5 @@
 from pathlib import Path
-from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
-HTTP = HTTPRemoteProvider()
+from workflow.utils import filename_from_url
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -11,13 +10,15 @@ scripts = Path("../scripts")
 
 # parse config
 treatmentResponse = config["treatmentResponse"]
+rawdata_name = filename_from_url(treatmentResponse["rawdata"]["url"])
+processed_name = filename_from_url(treatmentResponse["processed"]["url"])
 
 conda_env = "../envs/treatmentResponse.yaml"
 
 rule build_treatmentResponseExperiment:
     input:
-        rawdata = rawdata / "treatmentResponse" / "CCLE_NP24.2009_Drug_data_2015.02.24.csv",
-        processed = rawdata / "treatmentResponse" / "CCLE_GNF_data_090613.xls",
+        rawdata = rawdata / "treatmentResponse" / rawdata_name,
+        processed = rawdata / "treatmentResponse" / processed_name,
         treatmentMetadata = procdata / metadata / "annotations" / "CCLE_treatmentMetadata_annotated.tsv",
         sampleMetadata = procdata / metadata / "annotations" / "CCLE_sampleMetadata_annotated.tsv",
     output:
@@ -36,14 +37,16 @@ rule build_treatmentResponseExperiment:
         scripts / "treatmentResponse/build_treatmentResponseExperiment.R"
 
 rule download_treatmentResponse:
-    input:
-        rawdata = HTTP.remote(treatmentResponse["rawdata"]["url"]),
-        processed = HTTP.remote(treatmentResponse["processed"]["url"]),
     output:
-        rawdata = rawdata / "treatmentResponse" / "CCLE_NP24.2009_Drug_data_2015.02.24.csv",
-        processed = rawdata / "treatmentResponse" / "CCLE_GNF_data_090613.xls",
+        rawdata = rawdata / "treatmentResponse" / rawdata_name,
+        processed = rawdata / "treatmentResponse" / processed_name,
+    params:
+        rawdata_url=treatmentResponse["rawdata"]["url"],
+        processed_url=treatmentResponse["processed"]["url"],
     shell:
         """
-        mv {input.rawdata} {output.rawdata};
-        mv {input.processed} {output.processed};
+        set -euo pipefail
+        mkdir -p $(dirname {output.rawdata})
+        curl -L "{params.rawdata_url}" -o "{output.rawdata}";
+        curl -L "{params.processed_url}" -o "{output.processed}";
         """

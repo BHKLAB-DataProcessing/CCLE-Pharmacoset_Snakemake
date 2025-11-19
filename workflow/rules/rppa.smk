@@ -1,5 +1,5 @@
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from workflow.utils import filename_from_url
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -8,7 +8,9 @@ metadata = Path(config["directories"]["metadata"])
 scripts = Path("../scripts")
 
 rppa = config["molecularProfiles"]["rppa"]["tcpa_rppa500"]
-download_name = unquote(Path(urlparse(rppa["url"]).path).name)
+
+
+download_name = filename_from_url(rppa["url"])
 compression = "none"
 archive_member = rppa.get("archive_member")
 matrix_filename = rppa.get("filename")
@@ -46,7 +48,7 @@ rule download_RPPA:
         set -euo pipefail
         mkdir -p $(dirname {output.matrix}) $(dirname {log})
         tmp_file="$(mktemp)"
-        {
+        {{
           echo "[download] Fetching {params.url}"
           echo "[download] Saving to $(basename "$tmp_file") from {params.url}"
           curl -L "{params.url}" -o "$tmp_file"
@@ -64,7 +66,7 @@ rule download_RPPA:
               exit 1
               ;;
           esac
-        } > {log} 2>&1
+        }} > {log} 2>&1
         """
 
 

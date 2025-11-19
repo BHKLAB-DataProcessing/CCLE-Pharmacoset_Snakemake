@@ -1,6 +1,5 @@
 from pathlib import Path
-from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
-HTTP = HTTPRemoteProvider()
+from workflow.utils import filename_from_url
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -10,25 +9,22 @@ logs = Path(config["directories"]["logs"])
 scripts = Path("../scripts")
 
 mutation = config["molecularProfiles"]["mutation"]
+somatic_name = filename_from_url(mutation["somatic_mutations"]["url"])
 
 
 conda_env = "../envs/r-bioconductor.yaml"
 
 
 rule downloadMutation:
-    input:
-        oncomapAssay = HTTP.remote(mutation["oncomapAssay"]["url"]),
-        oncomap = HTTP.remote(mutation["oncomap"]["url"]),
-        hybridCapture = HTTP.remote(mutation["hybridCapture"]["url"]),
     output:
-        oncomapAssay=rawdata / "mutation" / "CCLE_Oncomap3_Assays_2012-04-09.csv",
-        oncomap=rawdata / "mutation" / "CCLE_Oncomap3_2012-04-09.maf",
-        hybridCapture=rawdata / "mutation" / "CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf",
+        somatic=rawdata / "mutation" / somatic_name,
+    params:
+        somatic_url=mutation["somatic_mutations"]["url"],
     shell:
         """
-        mv {input.oncomapAssay} {output.oncomapAssay} && \
-        mv {input.oncomap} {output.oncomap} && \
-        mv {input.hybridCapture} {output.hybridCapture}
+        set -euo pipefail
+        mkdir -p $(dirname {output.somatic})
+        curl -L "{params.somatic_url}" -o "{output.somatic}"
         """
 
 ###############################################################################
@@ -37,9 +33,8 @@ rule downloadMutation:
 
 rule preprocessMutation:
     input:
-        oncomapAssay=rawdata / "mutation" / "CCLE_Oncomap3_Assays_2012-04-09.csv",
-        oncomap=rawdata / "mutation" / "CCLE_Oncomap3_2012-04-09.maf",
-        hybridCapture=rawdata / "mutation" / "CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf",
+        somatic=rawdata / "mutation" / somatic_name,
+        sampleMetadata = procdata / metadata / "preprocessed_sampleMetadata.tsv",
     output:
         preprocessedMutation = procdata / "mutation" / "preprocessedMutation.RDS"
     log:
@@ -55,6 +50,12 @@ rule preprocessMutation:
 rule make_Mutation_SE:
     input:
         preprocessedMutation = procdata / "mutation" / "preprocessedMutation.RDS",
+        GENCODE_Annotation =
+            gencodeAnnotation(
+                dirPath=metadata,
+                ref_build=config["metadata"]["referenceGenome"]["build"],
+                gencode_ver=config["metadata"]["referenceGenome"]["release"],
+                species=config["metadata"]["referenceGenome"]["species"]),
     output:
         processedMutationSE = procdata / "mutation" / "Mutation_SE.RDS"
     conda:

@@ -11,11 +11,15 @@ if (exists("snakemake")) {
     sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources/", paste0(snakemake@rule, ".RData"))
+    file.path("snapshots/", paste0(snakemake@rule, ".RData"))
   )
+} else {
+  if (file.exists(file.path("snapshots/make_RNASEQ_SE.RData"))) {
+    load(file.path("snapshots/make_RNASEQ_SE.RData"))
+  }
 }
-load(file.path("resources/make_RNASEQ_SE.RData"))
 
 ## ------------------- LOAD INPUT ------------------- ##
 # These are the file names that will be loaded
