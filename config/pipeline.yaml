@@ -94,3 +94,11 @@ molecularProfiles:
     ccle_2019:
       description: CCLE metabolomics profiles (clean, imputed) quantified via LC-MS across 225 metabolites in 928 cell lines.
       url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_metabolomics_20190502.csv&bucket=depmap-external-downloads
+
+  mirna:
+    mirna_gct:
+      description: CCLE miRNA expression (GCT) release 2018-11-03.
+      url: ../CCLE_2019/primary/CCLE_miRNA_20181103.gct
+    mirna_mimat:
+      description: CCLE miRNA expression (MIMAT CSV) release 2018-11-03.
+      url: ../CCLE_2019/primary/CCLE_miRNA_MIMAT.csv
