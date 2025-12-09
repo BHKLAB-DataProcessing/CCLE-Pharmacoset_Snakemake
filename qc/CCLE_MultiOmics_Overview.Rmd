@@ -1,0 +1,158 @@
+---
+title: "CCLE Multi-Omics Sample Overlap Overview"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook provides a high-level overview of sample overlap across all molecular assays included in the CCLE PharmacoSet. Understanding which samples have data across multiple omics layers is crucial for multi-modal analyses and identifying "gold standard" cell lines with comprehensive characterization. This report visualizes the intersections of sample sets and identifies samples present in all assays.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 8
+)
+
+suppressPackageStartupMessages({
+  library(CoreGx)
+  library(PharmacoGx)
+  library(MultiAssayExperiment)
+  library(SummarizedExperiment)
+  library(tidyverse)
+  library(UpSetR) # For UpSet plots
+  library(DT) # For interactive tables
+  library(here)
+})
+
+source(here::here("qc", "qc_palette.R"))
+```
+
+## Data Access
+
+### Interpretation Guide
+
+*   **Molecular Profiles:** This section loads the PharmacoSet and extracts the sample IDs from all available molecular assays (e.g., RNA-seq, Proteomics, Epigenetics, Genomics, Metabolomics). Each assay represents a different omics layer.
+*   **Drug Sensitivity Data:** Sample IDs for drug sensitivity experiments are also extracted, although access to processed metrics may be limited as noted in the Drug Sensitivity QC report.
+
+```{r data-access}
+project_root <- here::here()
+knitr::opts_knit$set(root.dir = project_root)
+
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet file not found: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+assay_mae <- PharmacoGx::molecularProfiles(pset)
+
+# Extract sample IDs from each molecular profile
+molecular_sample_ids <- list()
+for (assay_name in names(MultiAssayExperiment::experiments(assay_mae))) {
+  se <- MultiAssayExperiment::experiments(assay_mae)[[assay_name]]
+  molecular_sample_ids[[assay_name]] <- colnames(se)
+}
+
+# Extract sample IDs from drug sensitivity data
+treatment_response <- PharmacoGx::treatmentResponse(pset)
+if (!is.null(treatment_response) && nrow(treatment_response) > 0) {
+  drug_sample_ids <- unique(PharmacoGx::sensitivityInfo(pset)$sampleid)
+  molecular_sample_ids[["drug_sensitivity"]] <- as.character(drug_sample_ids)
+} else {
+  message("No drug sensitivity data found or accessible in the PharmacoSet.")
+}
+
+# Convert all sample IDs to character and ensure uniqueness
+molecular_sample_ids <- lapply(molecular_sample_ids, as.character) |>
+  lapply(unique)
+
+# Convert to a format suitable for UpSetR: a list of named vectors
+listInput <- molecular_sample_ids
+
+# Create a summary table of samples per assay
+samples_per_assay <- tibble(
+  Assay = names(listInput),
+  Num_Samples = purrr::map_int(listInput, length)
+) |>
+  arrange(desc(Num_Samples))
+
+DT::datatable(
+  samples_per_assay,
+  colnames = c("Assay", "Number of Samples"),
+  caption = "Number of Samples per Molecular Assay.",
+  options = list(dom = 't', pageLength = 10)
+)
+
+# Identify gold standard samples (present in all assays)
+gold_standard_samples <- Reduce(intersect, listInput)
+num_gold_standard <- length(gold_standard_samples)
+
+DT::datatable(
+  tibble(
+    Metric = "Number of Gold Standard Samples (present in all assays)",
+    Value = as.character(num_gold_standard)
+  ),
+  colnames = c("Metric", "Value"),
+  caption = "Summary of Gold Standard Samples.",
+  options = list(dom = 't')
+)
+
+if (num_gold_standard > 0) {
+  DT::datatable(
+    tibble(`Gold Standard Sample ID` = gold_standard_samples),
+    colnames = c("Gold Standard Sample ID"),
+    caption = "List of Gold Standard Samples.",
+    options = list(dom = 't', pageLength = 10, scrollX = TRUE)
+  )
+} else {
+  DT::datatable(
+    tibble(Message = "No samples found to be present in all molecular assays."),
+    options = list(dom = 't')
+  )
+}
+
+
+```
+
+## Sample Overlap Visualization (UpSet Plot)
+
+### Interpretation Guide
+
+*   **Intersections:** The UpSet plot efficiently visualizes intersections between multiple sets (molecular assays in this case). The bars on the left show the size of each individual set (number of samples per assay).
+*   **Intersection Size:** The bars at the top represent the size of each intersection (number of samples common to a specific combination of assays).
+*   **Complex Relationships:** This plot helps identify which combinations of omics data are most frequently available for the same samples, guiding multi-omics study design.
+*   **Empty Intersections:** Absence of a bar for a specific combination indicates no samples have data for that particular set of assays.
+
+```{r upset-plot, fig.height=8, fig.width=12}
+# Check if there are at least two sets to plot, and enough samples
+if (length(listInput) >= 2 && sum(purrr::map_int(listInput, length)) > 0) {
+  upset(
+    fromList(listInput),
+    nsets = length(listInput),
+    order.by = "freq",
+    mainbar.y.label = "Sample Intersections",
+    text.scale = 1.2
+  )
+} else {
+  DT::datatable(
+    tibble(
+      Message = "Insufficient data or assays to generate an UpSet plot (need at least 2 assays with samples)."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

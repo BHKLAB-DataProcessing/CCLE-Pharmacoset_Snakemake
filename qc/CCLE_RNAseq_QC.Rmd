@@ -1,0 +1,540 @@
+---
+title: "CCLE RNA-seq Quality Control"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook drafts QC diagnostics for the CCLE RNA-seq assays in the PharmacoSet. It covers basic data review, missingness checks, library size and expression distributions, sample/feature outliers, and cross-tissue structure. Where relevant, it contrasts TPM and raw counts.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(CoreGx)
+  library(PharmacoGx)
+  library(MultiAssayExperiment)
+  library(SummarizedExperiment)
+  library(tidyverse)
+  library(scales)
+  library(here)
+  library(matrixStats)
+  library(pheatmap)
+  library(DT) # Added for interactive tables
+})
+
+source(here::here("qc", "qc_palette.R"))
+
+# Color shortcuts aligned with proteomics QC palette
+col_missing_sample <- palette_classic[3]
+col_missing_feature <- palette_classic[4]
+col_library_size <- palette_classic[6]
+col_expr_density <- palette_classic[8]
+col_mean_tpm <- palette_classic[1]
+col_gc_bias <- palette_classic[3]
+col_length_bias <- palette_classic[1]
+col_trend <- palette_classic[2]
+
+fraction_missing <- function(mat) mean(is.na(mat))
+sample_missingness <- function(mat) colMeans(is.na(mat))
+feature_missingness <- function(mat) rowMeans(is.na(mat))
+```
+
+## Data Access
+
+### Interpretation Guide
+
+*   **Assay Types:** This section loads RNA-seq data, typically available as TPM (Transcripts Per Million) and raw counts. TPM is useful for comparing gene expression across samples, while raw counts are necessary for differential expression analysis.
+*   **Summary Table (`overview`):** Provides a high-level summary of the RNA-seq data, including sample and feature counts, and the fraction of missing data. For RNA-seq, 0% missingness is expected as it typically contains non-zero counts or normalized values for all genes.
+*   **Strand Specificity (Note):** Direct checking of strand specificity usually requires access to raw alignment files (BAMs) and is typically performed upstream during read processing. If not already verified, ensure that the RNA-seq library preparation protocol and subsequent alignment were performed with the correct strandedness settings.
+
+```{r data-access}
+project_root <- here::here()
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet missing: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+assay_mae <- PharmacoGx::molecularProfiles(pset)
+
+rna_tpm <- MultiAssayExperiment::experiments(assay_mae)[["rnaseq.genes_tpm"]]
+rna_counts <- tryCatch(
+  MultiAssayExperiment::experiments(assay_mae)[["rnaseq.genes_counts"]],
+  error = function(e) NULL
+)
+
+cell_meta <- CoreGx::cellInfo(pset) |>
+  as_tibble() |>
+  select(
+    sampleid,
+    CCLE.site_Primary,
+    CCLE.histology,
+    CCLE.depMapID,
+    cellosaurus.cellLineName
+  ) |>
+  mutate(sampleid = as.character(sampleid))
+
+tpm_mat <- SummarizedExperiment::assay(rna_tpm, "exprs")
+tpm_rd <- SummarizedExperiment::rowData(rna_tpm)
+coldata_df <- as.data.frame(SummarizedExperiment::colData(rna_tpm))
+coldata_df <- coldata_df[, !duplicated(names(coldata_df)), drop = FALSE]
+coldata_df <- coldata_df[, setdiff(names(coldata_df), "sampleid"), drop = FALSE]
+sample_meta <- as_tibble(coldata_df, rownames = "sampleid")
+
+overview <- tibble(
+  samples = ncol(tpm_mat),
+  features = nrow(tpm_mat),
+  missing_fraction = fraction_missing(tpm_mat)
+)
+DT::datatable(
+  overview,
+  colnames = c("Samples", "Features", "Missing Fraction"),
+  caption = "RNA-seq Overview (TPM).",
+  options = list(dom = 't')
+)
+```
+
+## Exploratory Data Analysis
+
+### Interpretation Guide
+
+*   **Overview:** This section provides an initial characterization of the RNA-seq data, including sample composition by tissue, missingness patterns, sequencing depth, and overall expression distributions.
+
+### Lineage composition
+
+### Interpretation Guide
+
+*   **Cohort Diversity:** This plot visualizes the distribution of cell lines across different tissue types within the RNA-seq cohort. A diverse representation of lineages is important for capturing broad biological variability relevant to cancer research.
+*   **Balanced Representation:** Ideally, no single tissue type should overwhelmingly dominate the cohort, unless by design, to avoid biases in downstream analyses.
+
+```{r lineage-composition, fig.height=5}
+lineage_counts <- sample_meta |>
+  left_join(cell_meta, by = "sampleid") |>
+  mutate(tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified")) |>
+  count(tissue, sort = TRUE)
+
+ggplot(lineage_counts, aes(x = "", y = n, fill = tissue)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = tissue_palette(lineage_counts$tissue)) +
+  labs(title = "Lineage composition of RNA-seq cohort", x = NULL, y = NULL) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+### Missingness and library sizes
+
+### Interpretation Guide (Sample-level Missingness)
+
+*   **Expectation:** For gene-level TPM data, 0% missingness is typical as all genes are usually quantified (even if at very low levels). Any significant missingness at the sample level might indicate data processing issues or corrupted files.
+
+```{r missingness, fig.height=4.5}
+sample_miss <- sample_missingness(tpm_mat)
+feature_miss <- feature_missingness(tpm_mat)
+
+ggplot(
+  tibble(sampleid = names(sample_miss), missing = sample_miss),
+  aes(x = missing)
+) +
+  geom_histogram(bins = 40, fill = col_missing_sample, color = "white") +
+  scale_x_continuous(labels = percent) +
+  labs(
+    title = "Sample-level missingness (TPM)",
+    x = "Fraction missing",
+    y = "Samples"
+  )
+```
+
+### Interpretation Guide (Feature-level Missingness)
+
+*   **Expectation:** Similar to sample-level missingness, feature-level missingness should ideally be 0% for TPM data. High missingness for specific genes could indicate issues with annotation or very low expression across the board.
+
+```{r feature-missing, fig.height=4.5}
+feature_missing_df <- tibble(feature = names(feature_miss), missing = feature_miss)
+
+if (n_distinct(feature_missing_df$missing) <= 1) {
+  DT::datatable(
+    tibble(
+      Message = sprintf(
+        "Feature-level missingness is constant at %s (TPM); no gaps detected.",
+        scales::percent(unique(feature_missing_df$missing))
+      )
+    ),
+    options = list(dom = 't')
+  )
+} else {
+  ggplot(feature_missing_df, aes(x = missing)) +
+    geom_histogram(bins = 40, fill = col_missing_feature, color = "white") +
+    scale_x_continuous(labels = percent) +
+    labs(
+      title = "Feature-level missingness (TPM)",
+      x = "Fraction missing",
+      y = "Genes"
+    )
+}
+```
+
+### Interpretation Guide (Library Sizes - Raw Counts)
+
+*   **Sequencing Depth:** This histogram shows the distribution of total raw counts (library sizes) per sample. Consistent library sizes across samples indicate uniform sequencing depth.
+*   **Outliers:** Samples with extremely low library sizes may have insufficient sequencing depth and could be considered low quality.
+
+```{r library-sizes, fig.height=4.5}
+if (!is.null(rna_counts)) {
+  counts_mat <- SummarizedExperiment::assay(rna_counts, "exprs")
+  lib_sizes <- colSums(counts_mat, na.rm = TRUE)
+  ggplot(tibble(sampleid = names(lib_sizes), lib = lib_sizes), aes(x = lib)) +
+    geom_histogram(bins = 40, fill = col_library_size, color = "white") +
+    scale_x_continuous(labels = comma) +
+    labs(
+      title = "Library sizes (raw counts)",
+      x = "Total counts",
+      y = "Samples"
+    )
+} else {
+  DT::datatable(
+    tibble(
+      Message = "Raw counts matrix not available; skipping library size analysis."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+### Expression distribution
+
+### Interpretation Guide
+
+*   **Shape:** Gene expression (TPM) distributions are typically right-skewed, with many genes having low expression and a few highly expressed genes. The `log1p` transformation often makes the distribution more symmetric.
+*   **Dynamic Range:** A wide distribution indicates a good dynamic range of expression levels captured by the assay.
+
+```{r expr-distribution, fig.height=4.5}
+vals <- as.numeric(tpm_mat)
+vals <- vals[is.finite(vals)]
+if (length(vals) > 200000) {
+  vals <- sample(vals, 200000)
+}
+
+ggplot(tibble(tpm = vals), aes(x = tpm)) +
+  geom_density(fill = col_expr_density, alpha = 0.3) +
+  scale_x_continuous(trans = "log1p") +
+  labs(
+    title = "Gene expression distribution (TPM)",
+    x = "TPM (log1p)",
+    y = "Density"
+  )
+```
+
+### Highly variable genes and sample outliers
+
+### Interpretation Guide (Variance of Top Genes)
+
+*   **Biological Signal:** Highly variable genes (HVGs) are often key players in biological processes and disease states. This histogram shows the distribution of variance for the top 1000 most variable genes.
+*   **Enrichment:** A distribution with a clear tail towards higher variance indicates a strong biological signal captured by the HVGs.
+
+```{r hvg, fig.height=4.5}
+gene_var <- matrixStats::rowVars(tpm_mat, na.rm = TRUE)
+top_genes <- head(order(gene_var, decreasing = TRUE), 1000)
+var_df <- tibble(
+  gene = rownames(tpm_mat)[top_genes],
+  variance = gene_var[top_genes]
+)
+
+ggplot(var_df, aes(x = variance)) +
+  geom_histogram(bins = 40, fill = palette_classic[5], color = "white") +
+  labs(title = "Variance of top genes", x = "Variance (TPM)", y = "Gene count")
+```
+
+### Interpretation Guide (Sample Mean TPM)
+
+*   **Normalization Check:** This histogram shows the distribution of mean TPM values per sample. After proper normalization, samples should have similar mean expression levels. Significant deviations could indicate normalization issues or global expression shifts.
+*   **Outliers:** Outlier samples with unusually high or low mean TPM may warrant further investigation.
+
+```{r sample-means, fig.height=4.5}
+sample_means <- colMeans(tpm_mat, na.rm = TRUE)
+ggplot(
+  tibble(sampleid = names(sample_means), mean_tpm = sample_means),
+  aes(x = mean_tpm)
+) +
+  geom_histogram(bins = 40, fill = col_mean_tpm, color = "white") +
+  scale_x_continuous(trans = "log1p") +
+  labs(title = "Sample mean TPM", x = "Mean TPM (log1p)", y = "Samples")
+```
+
+## Cross-sample Structure
+
+### Interpretation Guide
+
+*   **Overview:** This section examines the global relationships between samples based on their RNA-seq profiles. It aims to identify expected biological clustering (e.g., by tissue type) and detect any unexpected technical artifacts (e.g., batch effects).
+
+### PCA on TPM
+
+### Interpretation Guide
+
+*   **Biological Clustering:** PCA is used to visualize the major sources of variation in the RNA-seq data. Samples from the same tissue or lineage are expected to cluster together, indicating that biological factors are the primary drivers of gene expression patterns.
+*   **Outliers:** Isolated samples far from any cluster may represent biological outliers or technical issues.
+*   **Explained Variance:** The first few principal components (PC1, PC2) should explain a substantial portion of the total variance, confirming meaningful underlying structure.
+
+```{r pca, fig.height=5}
+mat <- tpm_mat
+mat <- mat[apply(mat, 1, function(x) mean(!is.na(x)) > 0.9), ]
+# limit to top variable genes for speed/stability
+gene_var <- matrixStats::rowVars(mat, na.rm = TRUE)
+top_idx <- head(order(gene_var, decreasing = TRUE), 5000)
+mat <- mat[top_idx, , drop = FALSE]
+mat <- t(scale(t(mat), center = TRUE, scale = TRUE))
+mat[is.na(mat)] <- 0
+col_sds <- matrixStats::colSds(mat)
+zero_var <- which(col_sds == 0 | !is.finite(col_sds))
+if (length(zero_var)) {
+  mat <- mat[, -zero_var, drop = FALSE]
+}
+if (ncol(mat) > 2) {
+  pca <- tryCatch(
+    prcomp(t(mat), scale. = FALSE),
+    error = function(e) NULL
+  )
+  if (!is.null(pca)) {
+    pca_df <- as_tibble(pca$x[, 1:2], rownames = "sampleid") |>
+      left_join(sample_meta, by = "sampleid") |>
+      left_join(cell_meta, by = "sampleid") |>
+      mutate(
+        tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified")
+      )
+
+    ggplot(pca_df, aes(x = PC1, y = PC2, color = tissue)) +
+      geom_point(alpha = 0.8, size = 1.8) +
+      scale_color_manual(values = tissue_palette(pca_df$tissue)) +
+      labs(title = "PCA of RNA-seq (TPM)", color = "Tissue") +
+      theme(legend.position = "none")
+  } else {
+    DT::datatable(
+      tibble(
+        Message = "PCA failed (likely due to constant columns) after filtering; consider stronger variance filtering."
+      ),
+      options = list(dom = 't')
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(Message = "Insufficient samples for PCA after variance filtering."),
+    options = list(dom = 't')
+  )
+}
+```
+
+### Sample–sample correlation heatmap
+
+### Interpretation Guide
+
+*   **Replicate Agreement:** Samples from the same cell line (if replicates exist) should show high positive correlations. Biologically similar cell lines or tissues are also expected to show higher correlations.
+*   **Batch Effects:** Lack of expected clustering or strong block-like patterns unrelated to biology can indicate batch effects.
+*   **Subset for Visibility:** A subset of samples is plotted for clarity in the heatmap. A full heatmap would be too dense for visualization but would confirm these patterns across all samples.
+
+```{r correlation-heatmap, fig.height=5}
+cor_genes <- matrixStats::rowVars(tpm_mat, na.rm = TRUE)
+top_cor_idx <- head(order(cor_genes, decreasing = TRUE), 5000)
+cor_mat <- cor(
+  tpm_mat[top_cor_idx, , drop = FALSE],
+  use = "pairwise.complete.obs"
+)
+subset_idx <- if (ncol(cor_mat) > 80) {
+  sample(seq_len(ncol(cor_mat)), 80)
+} else {
+  seq_len(ncol(cor_mat))
+}
+cor_subset <- cor_mat[subset_idx, subset_idx]
+pheatmap(
+  cor_subset,
+  color = colorRampPalette(c("#08306B", "white", "#7F0000"))(201),
+  main = "Sample–sample correlation (subset for visibility)"
+)
+```
+
+## Gene-level Checks
+
+### Interpretation Guide
+
+*   **Overview:** This section focuses on quality control metrics at the individual gene level, including the consistency of housekeeping genes and the proportion of mitochondrial and ribosomal RNA.
+
+### Housekeeping gene consistency
+
+### Interpretation Guide
+
+*   **Stable Expression:** Housekeeping genes (e.g., GAPDH, ACTB) are expected to be expressed consistently across most cell types and experimental conditions, serving as internal controls.
+*   **Variability Check:** This boxplot visualizes the expression levels of selected housekeeping genes. Tight distributions with minimal outliers indicate good data quality and consistent expression of these control genes.
+*   **`knitr::asis_output`:** If housekeeping genes are not found, a message will be displayed.
+
+```{r housekeeping, fig.height=4.5}
+housekeeping <- c("GAPDH", "ACTB", "RPLP0", "EEF1A1", "TUBB")
+
+hk_vals <- purrr::map_dfr(housekeeping, function(g) {
+  idx <- which(SummarizedExperiment::rowData(rna_tpm)$gene_name == g)
+  if (!length(idx)) {
+    return(NULL)
+  }
+  vals <- matrixStats::colMeans2(tpm_mat[idx, , drop = FALSE], na.rm = TRUE)
+  tibble(gene = g, sampleid = colnames(tpm_mat), tpm = vals)
+})
+
+if (nrow(hk_vals)) {
+  ggplot(hk_vals, aes(x = gene, y = tpm, fill = gene)) +
+    geom_boxplot(outlier.alpha = 0.2) +
+    scale_y_continuous(trans = "log1p") +
+    labs(
+      title = "Housekeeping gene expression consistency",
+      x = NULL,
+      y = "TPM (log1p)"
+    ) +
+    theme(legend.position = "none")
+} else {
+  DT::datatable(
+    tibble(
+      Message = "Housekeeping genes not found in rowData. Checked genes: GAPDH, ACTB, RPLP0, EEF1A1, TUBB."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+### Mitochondrial and ribosomal content
+
+### Interpretation Guide (Mitochondrial RNA Fraction)
+
+*   **Quality Indicator:** The fraction of mitochondrial RNA (MT-RNA) in a sample is often used as a quality control metric. High mitochondrial fractions can indicate poor cell integrity, apoptosis, or contamination.
+*   **Expected Range:** The expected range for MT-RNA varies by cell type and preparation, but samples with extremely high fractions (>10-20% as a rough guideline) may be considered low quality.
+
+```{r mito-ribo, fig.height=4.5}
+gene_names <- SummarizedExperiment::rowData(rna_tpm)$gene_name
+mt_idx <- grep("^MT-", gene_names, value = FALSE)
+ribo_idx <- grep("^RPL|^RPS", gene_names)
+
+mt_frac <- colSums(tpm_mat[mt_idx, , drop = FALSE], na.rm = TRUE) /
+  colSums(tpm_mat, na.rm = TRUE)
+ribo_frac <- colSums(tpm_mat[ribo_idx, , drop = FALSE], na.rm = TRUE) /
+  colSums(tpm_mat, na.rm = TRUE)
+
+qc_df <- tibble(
+  sampleid = colnames(tpm_mat),
+  mito_fraction = mt_frac,
+  ribo_fraction = ribo_frac
+)
+
+ggplot(qc_df, aes(x = mito_fraction)) +
+  geom_histogram(bins = 40, fill = palette_classic[6], color = "white") +
+  scale_x_continuous(labels = percent) +
+  labs(
+    title = "Mitochondrial RNA fraction",
+    x = "Fraction of total TPM",
+    y = "Samples"
+  )
+```
+
+### Interpretation Guide (Ribosomal RNA Fraction)
+
+*   **Ribosomal Contamination:** The fraction of ribosomal RNA (rRNA) is another quality control metric. High rRNA content often indicates incomplete rRNA depletion during library preparation, which can reduce the effective sequencing depth for mRNA.
+*   **Expected Range:** Ideally, rRNA fractions should be low (e.g., <5-10%), but this depends on the depletion protocol used.
+
+```{r ribo-fraction, fig.height=4.5}
+ggplot(qc_df, aes(x = ribo_fraction)) +
+  geom_histogram(bins = 40, fill = col_expr_density, color = "white") +
+  scale_x_continuous(labels = percent) +
+  labs(
+    title = "Ribosomal RNA fraction",
+    x = "Fraction of total TPM",
+    y = "Samples"
+  )
+```
+
+### GC Bias and Gene Length Effects
+
+### Interpretation Guide
+
+*   **GC Bias:** Sequencing technologies can have biases related to the GC content of DNA. Biases often manifest as a non-uniform relationship between gene expression and GC content, or gene length. Ideally, a uniform distribution would be expected.
+*   **Gene Length:** Expression values can sometimes correlate with gene length due to factors like read mapping efficiency or normalization procedures. These plots help identify if such biases are present and if they are consistent across samples.
+
+```{r gc-bias-gene-length}
+gene_info <- as_tibble(tpm_rd) |>
+  select(gene_name, gene_id) |>
+  mutate(gene_symbol = coalesce(gene_name, gene_id))
+
+gc_col_candidates <- c("gc_content", "GC_content", "percent_gc") # Added 'percent_gc'
+length_col_candidates <- c("gene_length", "width", "Length", "seq_length") # Added 'seq_length'
+
+available_gc_col <- intersect(gc_col_candidates, names(tpm_rd))
+available_length_col <- intersect(length_col_candidates, names(tpm_rd))
+
+plot_gc_bias <- function(df, gc_col) {
+  ggplot(df, aes(x = !!sym(gc_col), y = mean_tpm_log2)) +
+    geom_point(alpha = 0.2, color = col_gc_bias) +
+    geom_smooth(method = "loess", color = col_trend, se = FALSE) +
+    labs(
+      title = "Gene Expression vs. GC Content",
+      x = "GC Content",
+      y = "Mean log2(TPM + 1)"
+    ) +
+    theme_minimal(base_size = 12)
+}
+
+plot_length_bias <- function(df, length_col) {
+  ggplot(df, aes(x = !!sym(length_col), y = mean_tpm_log2)) +
+    geom_point(alpha = 0.2, color = col_length_bias) +
+    geom_smooth(method = "loess", color = col_trend, se = FALSE) +
+    scale_x_continuous(trans = "log10", labels = scales::comma) +
+    labs(
+      title = "Gene Expression vs. Gene Length",
+      x = "Gene Length (log10)",
+      y = "Mean log2(TPM + 1)"
+    ) +
+    theme_minimal(base_size = 12)
+}
+
+if (length(available_gc_col) > 0 || length(available_length_col) > 0) {
+  tpm_mean_log2 <- tibble(
+    gene_id = rownames(tpm_mat),
+    mean_tpm_log2 = log2(rowMeans(tpm_mat, na.rm = TRUE) + 1)
+  ) |>
+    left_join(as_tibble(tpm_rd, rownames = "gene_id"), by = "gene_id")
+
+  if (length(available_gc_col) > 0) {
+    gc_plot <- plot_gc_bias(tpm_mean_log2, available_gc_col[1])
+    print(gc_plot)
+  }
+  if (length(available_length_col) > 0) {
+    length_plot <- plot_length_bias(tpm_mean_log2, available_length_col[1])
+    print(length_plot)
+  }
+  if (length(available_gc_col) == 0 && length(available_length_col) == 0) {
+    DT::datatable(
+      tibble(
+        Message = "No GC content or gene length information found in rowData. Skipping GC bias and gene length analysis."
+      ),
+      options = list(dom = 't')
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(
+      Message = "No GC content or gene length information found in rowData. Skipping GC bias and gene length analysis."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

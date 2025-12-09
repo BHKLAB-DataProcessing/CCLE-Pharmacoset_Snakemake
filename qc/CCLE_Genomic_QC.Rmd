@@ -1,0 +1,533 @@
+---
+title: "CCLE Genomic (Mutation & CNV) Quality Control"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook drafts QC diagnostics for the CCLE mutation and copy-number assays in the PharmacoSet. It covers basic cohort scope, mutation burden, CNV distributions, sample/feature outliers, and lineage-level summaries. It also provides simple mutation–CNV concordance checks for frequently altered genes.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(CoreGx)
+  library(PharmacoGx)
+  library(MultiAssayExperiment)
+  library(SummarizedExperiment)
+  library(tidyverse)
+  library(scales)
+  library(here)
+  library(matrixStats)
+  library(pheatmap)
+  library(patchwork)
+  library(DT) # Added for interactive tables
+})
+
+source(here::here("qc", "qc_palette.R"))
+
+col_mut_burden <- palette_classic[1]
+col_cnv_density <- palette_classic[6]
+col_cnv_threshold <- palette_classic[4]
+col_top_amp <- palette_classic[2]
+col_top_del <- palette_classic[1]
+col_lineage_cnv <- palette_classic[5]
+col_cnv_box <- palette_classic[6]
+```
+
+## Data Access
+
+### Interpretation Guide
+
+*   **Mutation Overview:** Summarizes the mutation data, including the number of samples, genes, and the fraction of non-wildtype (mutated) entries.
+*   **CNV Overview:** Provides a summary of copy number variation data, including sample and gene counts, and the mean fraction of amplified (>2 copies) and deleted (<0.6 copies) genes. These thresholds are commonly used to identify significant CNV events.
+
+```{r data-access}
+project_root <- here::here()
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet missing: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+assay_mae <- PharmacoGx::molecularProfiles(pset)
+
+mut_se <- MultiAssayExperiment::experiments(assay_mae)[["mut.genes"]]
+cnv_se <- MultiAssayExperiment::experiments(assay_mae)[["cnv.genes"]]
+
+mut_mat <- SummarizedExperiment::assay(mut_se, "exprs")
+cnv_mat <- SummarizedExperiment::assay(cnv_se, "exprs")
+
+mut_mat <- as.matrix(mut_mat)
+cnv_mat <- as.matrix(cnv_mat)
+
+mut_rd <- SummarizedExperiment::rowData(mut_se)
+cnv_rd <- SummarizedExperiment::rowData(cnv_se)
+
+cell_meta <- CoreGx::cellInfo(pset) |>
+  as_tibble() |>
+  select(
+    sampleid,
+    CCLE.site_Primary,
+    CCLE.histology,
+    CCLE.depMapID,
+    cellosaurus.cellLineName
+  ) |>
+  mutate(sampleid = as.character(sampleid))
+
+mut_overview <- tibble(
+  samples = ncol(mut_mat),
+  genes = nrow(mut_mat),
+  nonzero_fraction = mean(
+    !is.na(mut_mat) &
+      mut_mat != "" &
+      !grepl("^wt", mut_mat, ignore.case = TRUE),
+    na.rm = TRUE
+  )
+)
+
+cnv_overview <- tibble(
+  samples = ncol(cnv_mat),
+  genes = nrow(cnv_mat),
+  mean_amp = mean(cnv_mat > 2, na.rm = TRUE),
+  mean_del = mean(cnv_mat < 0.6, na.rm = TRUE)
+)
+
+DT::datatable(
+  mut_overview,
+  colnames = c("Samples", "Genes", "Non-zero Fraction"),
+  caption = "Mutation Data Overview.",
+  options = list(dom = 't')
+)
+
+DT::datatable(
+  cnv_overview,
+  colnames = c(
+    "Samples",
+    "Genes",
+    "Mean Amplification Fraction",
+    "Mean Deletion Fraction"
+  ),
+  caption = "CNV Data Overview.",
+  options = list(dom = 't')
+)
+```
+
+## Mutation QC
+
+### Interpretation Guide
+
+*   **Mutation Burden:** High mutation burden can indicate specific etiologies (e.g., UV radiation in melanoma) or genomic instability. Extremely low or high values for a single sample should be investigated.
+*   **Top Mutated Genes:** Highlights commonly altered genes, which should align with known cancer drivers or frequently mutated genes in the cohort.
+*   **Lineage Specificity:** Mutation patterns often differ across cancer types. Visualizing burden by lineage helps confirm these expected biological differences.
+
+### Per-sample mutation burden
+
+### Interpretation Guide
+
+*   **Distribution:** A typical distribution is often skewed, with most samples having a relatively low number of mutations and a few outliers with very high mutation counts (hypermutated samples).
+*   **Outliers:** Samples with extremely high mutation burden might be hypermutated, potentially due to DNA repair deficiencies, while samples with unusually low counts might indicate data quality issues or misclassification.
+
+```{r mutation-burden, fig.height=4.5}
+mut_present <- !is.na(mut_mat) &
+  mut_mat != "" &
+  !grepl("^wt", mut_mat, ignore.case = TRUE)
+mut_binary <- matrix(
+  0L,
+  nrow = nrow(mut_mat),
+  ncol = ncol(mut_mat),
+  dimnames = dimnames(mut_mat)
+)
+mut_binary[mut_present] <- 1L
+sample_mut_burden <- colSums(mut_binary, na.rm = TRUE)
+
+ggplot(
+  tibble(sampleid = names(sample_mut_burden), burden = sample_mut_burden),
+  aes(x = burden)
+) +
+  geom_histogram(bins = 50, fill = col_mut_burden, color = "white") +
+  scale_x_continuous(labels = comma) +
+  labs(
+    title = "Per-sample mutation burden (genes mutated)",
+    x = "Genes",
+    y = "Samples"
+  )
+```
+
+### Top mutated genes
+
+### Interpretation Guide
+
+*   **Common Drivers:** This plot highlights genes that are most frequently mutated across the cohort. These often include known cancer driver genes (e.g., TP53, KRAS) and their frequency should align with expectations for the cancer types represented.
+*   **Outliers:** Unexpectedly high mutation frequencies for genes not typically associated with cancer or the specific cohort could indicate artifacts.
+
+```{r top-mutated-genes, fig.height=5}
+gene_freq <- rowSums(mut_binary, na.rm = TRUE)
+top_genes <- head(sort(gene_freq, decreasing = TRUE), 30)
+
+DT::datatable(
+  tibble(gene = names(top_genes), freq = top_genes),
+  colnames = c("Gene", "Mutation Count (Samples)"),
+  caption = "Top 30 Most Frequently Mutated Genes.",
+  options = list(dom = 't', pageLength = 10)
+)
+```
+
+### Lineage mutation burden
+
+### Interpretation Guide
+
+*   **Tissue-Specific Patterns:** Different cancer types (lineages) can have varying mutation burdens due to diverse etiologies and genomic instability mechanisms. This plot helps confirm if these expected lineage-specific differences are captured in the data.
+*   **Outliers:** Outlier samples within a specific tissue type might represent biological heterogeneity or data quality issues unique to that sample.
+
+```{r mutation-lineage, fig.height=4.5}
+sample_lineage <- cell_meta |>
+  mutate(tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified"))
+
+mut_burden_df <- tibble(
+  sampleid = names(sample_mut_burden),
+  burden = sample_mut_burden
+) |>
+  left_join(sample_lineage, by = "sampleid")
+
+ggplot(mut_burden_df, aes(x = tissue, y = burden, fill = tissue)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  scale_fill_manual(values = tissue_palette(mut_burden_df$tissue)) +
+  labs(title = "Mutation burden by tissue", x = NULL, y = "Genes mutated") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+### Transition/Transversion (Ti/Tv) Ratio
+
+### Interpretation Guide
+
+*   **Ti/Tv Ratio:** The Transition/Transversion (Ti/Tv) ratio is a key metric for assessing the quality of sequencing data and identifying potential biases. Transitions (purine-to-purine or pyrimidine-to-pyrimidine) are typically more common than transversions (purine-to-pyrimidine or vice-versa) in human germline and somatic mutations. Expected Ti/Tv ratios vary by sequencing type (e.g., ~2.0-2.1 for whole genome, ~3.0-3.3 for exome sequencing).
+*   **Deviation from Expected:** Significant deviations from the expected ratio can indicate sequencing artifacts, contamination, or specific mutagenic processes.
+
+```{r titv-ratio}
+# Check mut_rd for necessary columns to calculate Ti/Tv ratio
+# We need reference and alternate alleles to classify mutations as transitions or transversions
+allele_cols <- c(
+  "Reference_Allele",
+  "Tumor_Seq_Allele2",
+  "Allele_A",
+  "Allele_B"
+)
+purine <- c("A", "G")
+pyrimidine <- c("C", "T")
+
+available_allele_cols <- intersect(allele_cols, names(mut_rd))
+
+if (length(available_allele_cols) >= 2) {
+  ref_col <- available_allele_cols[1]
+  alt_col <- available_allele_cols[2]
+
+  # Convert to character and filter out non-SNP mutations (insertions/deletions)
+  mut_df <- as_tibble(mut_rd) |>
+    select(!!sym(ref_col), !!sym(alt_col)) |>
+    filter(nchar(!!sym(ref_col)) == 1 & nchar(!!sym(alt_col)) == 1) # Filter for SNPs
+
+  if (nrow(mut_df) > 0) {
+    mut_df <- mut_df |>
+      mutate(
+        is_transition = case_when(
+          (!!sym(ref_col) %in% purine &
+            !!sym(alt_col) %in% purine &
+            !!sym(ref_col) != !!sym(alt_col)) ~ TRUE,
+          (!!sym(ref_col) %in% pyrimidine &
+            !!sym(alt_col) %in% pyrimidine &
+            !!sym(ref_col) != !!sym(alt_col)) ~ TRUE,
+          TRUE ~ FALSE
+        ),
+        is_transversion = case_when(
+          (!!sym(ref_col) %in% purine & !!sym(alt_col) %in% pyrimidine) ~ TRUE,
+          (!!sym(ref_col) %in% pyrimidine & !!sym(alt_col) %in% purine) ~ TRUE,
+          TRUE ~ FALSE
+        )
+      ) |>
+      filter(is_transition | is_transversion)
+
+    num_transitions <- sum(mut_df$is_transition, na.rm = TRUE)
+    num_transversions <- sum(mut_df$is_transversion, na.rm = TRUE)
+
+    titv_ratio <- if (num_transversions > 0) {
+      num_transitions / num_transversions
+    } else {
+      NA_real_
+    }
+
+    DT::datatable(
+      tibble(
+        Metric = c(
+          "Number of Transitions",
+          "Number of Transversions",
+          "Ti/Tv Ratio"
+        ),
+        Value = as.character(c(
+          num_transitions,
+          num_transversions,
+          round(titv_ratio, 3)
+        ))
+      ),
+      colnames = c("Metric", "Value"),
+      caption = "Transition/Transversion (Ti/Tv) Ratio Summary.",
+      options = list(dom = 't')
+    )
+  } else {
+    DT::datatable(
+      tibble(
+        Message = "No suitable SNP mutations found in rowData for Ti/Tv ratio calculation after filtering."
+      ),
+      options = list(dom = 't')
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(
+      Message = "Insufficient allele information (e.g., Reference_Allele, Tumor_Seq_Allele2) in mutation feature metadata for Ti/Tv ratio calculation. Please check mut_rd structure."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+
+## CNV QC
+
+### Interpretation Guide
+
+*   **Copy Number Variation (CNV):** CNVs represent changes in the number of copies of a particular gene or region of DNA. These can be amplifications (gain of copies) or deletions (loss of copies), and they play a significant role in cancer development.
+*   **Distribution & Patterns:** The plots in this section help visualize the overall distribution of CNVs, identify frequently amplified or deleted regions, and assess if CNV patterns correlate with tissue lineage.
+
+### CNV distribution
+
+### Interpretation Guide
+
+*   **Shape:** The distribution of copy-number values should ideally be centered around 2 (diploid state) for most genes in a diverse cohort. Deviations from this can indicate widespread genomic alterations or technical biases.
+*   **Peaks:** Peaks at values like 0 (homozygous deletion), 1 (heterozygous deletion), 3+ (amplification) are expected and biologically relevant in cancer datasets.
+
+```{r cnv-distribution, fig.height=4.5}
+cnv_vals <- as.numeric(cnv_mat)
+cnv_vals <- cnv_vals[is.finite(cnv_vals)]
+if (length(cnv_vals) > 200000) {
+  cnv_vals <- sample(cnv_vals, 200000)
+}
+
+ggplot(tibble(cnv = cnv_vals), aes(x = cnv)) +
+  geom_density(fill = col_cnv_density, alpha = 0.3) +
+  labs(title = "CNV distribution", x = "Copy-number value", y = "Density")
+```
+
+### CNV GISTIC-like thresholds
+
+### Interpretation Guide
+
+*   **Thresholding:** This plot shows the fraction of genes that exceed predefined amplification or deletion thresholds per sample. These thresholds (`amp_thresh`, `del_thresh`) are often set based on statistical significance (e.g., GISTIC analysis) or biological relevance.
+*   **Overall Burden:** The distribution indicates the overall burden of significant copy number alterations across the samples. Outliers with extremely high fractions of amplification or deletion may warrant further investigation.
+
+```{r cnv-gistic, fig.height=4.5}
+amp_thresh <- max(2, quantile(cnv_vals, 0.99, na.rm = TRUE))
+del_thresh <- min(0.6, quantile(cnv_vals, 0.05, na.rm = TRUE))
+amp_frac <- colMeans(cnv_mat > amp_thresh, na.rm = TRUE)
+del_frac <- colMeans(cnv_mat < del_thresh, na.rm = TRUE)
+
+ggplot(
+  tibble(sampleid = names(amp_frac), amp = amp_frac, del = del_frac),
+  aes(x = amp)
+) +
+  geom_histogram(bins = 40, fill = col_cnv_threshold, color = "white") +
+  labs(
+    title = "Fraction of amplified genes per sample",
+    subtitle = paste0(
+      "Threshold amp > ",
+      round(amp_thresh, 2),
+      " | del < ",
+      round(del_thresh, 2)
+    ),
+    x = "Fraction amplified",
+    y = "Samples"
+  )
+```
+
+### Top amplified/deleted genes
+
+### Interpretation Guide
+
+*   **Recurrent Alterations:** These plots highlight genes that are most frequently amplified or deleted across the cohort. These are often important oncogenes (amplified) or tumor suppressor genes (deleted) in cancer.
+*   **Threshold Relevance:** The thresholds used for amplification and deletion are critical. If `max(top_amp)` or `max(top_del)` is 0, it means no genes met the set thresholds, suggesting that the thresholds might be too stringent or that the cohort has a low incidence of these specific CNVs.
+
+```{r cnv-top-genes, fig.height=5}
+gene_amp <- rowMeans(cnv_mat > amp_thresh, na.rm = TRUE)
+gene_del <- rowMeans(cnv_mat < del_thresh, na.rm = TRUE)
+
+top_amp <- head(sort(gene_amp, decreasing = TRUE), 25)
+top_del <- head(sort(gene_del, decreasing = TRUE), 25)
+
+if (max(top_amp, na.rm = TRUE) == 0) {
+  DT::datatable(
+    tibble(
+      Message = "No genes exceeded amplification threshold; adjust amp_thresh if needed."
+    ),
+    options = list(dom = 't')
+  )
+} else {
+  p1 <- ggplot(
+    tibble(gene = names(top_amp), frac = top_amp),
+    aes(x = reorder(gene, frac), y = frac)
+  ) +
+    geom_col(fill = col_top_amp) +
+    coord_flip() +
+    labs(
+      title = "Most frequently amplified genes",
+      subtitle = paste0("Threshold amp > ", round(amp_thresh, 2)),
+      x = "Gene",
+      y = "Fraction amplified"
+    )
+  print(p1)
+}
+
+if (max(top_del, na.rm = TRUE) == 0) {
+  DT::datatable(
+    tibble(
+      Message = "No genes exceeded deletion threshold; adjust del_thresh if needed."
+    ),
+    options = list(dom = 't')
+  )
+} else {
+  p2 <- ggplot(
+    tibble(gene = names(top_del), frac = top_del),
+    aes(x = reorder(gene, frac), y = frac)
+  ) +
+    geom_col(fill = col_top_del) +
+    coord_flip() +
+    labs(
+      title = "Most frequently deleted genes",
+      subtitle = paste0("Threshold del < ", round(del_thresh, 2)),
+      x = "Gene",
+      y = "Fraction deleted"
+    )
+  print(p2)
+}
+```
+
+### CNV lineage patterns
+
+### Interpretation Guide
+
+*   **Tissue-Specific CNVs:** This plot shows the distribution of adjusted R-squared values from linear models, where gene CNV values are predicted by tissue lineage. High R-squared values suggest that specific CNVs are enriched or depleted in certain tissue types, indicating lineage-specific genomic alterations.
+*   **Biological Relevance:** Recurrent CNVs in specific lineages are often functionally important, driving tumor growth or influencing drug response.
+
+```{r cnv-lineage, fig.height=5}
+common_samples <- intersect(colnames(cnv_mat), sample_lineage$sampleid)
+cnv_for_lin <- cnv_mat[, common_samples, drop = FALSE]
+lineage_vec <- sample_lineage$tissue[match(
+  common_samples,
+  sample_lineage$sampleid
+)]
+
+gene_lin_r2 <- apply(cnv_for_lin, 1, function(x) {
+  df <- tibble(val = x, tissue = lineage_vec)
+  df <- df[!is.na(df$val) & !is.na(df$tissue), ]
+  if (n_distinct(df$tissue) < 2) {
+    return(NA_real_)
+  }
+  fit <- lm(val ~ tissue, data = df)
+  summary(fit)$adj.r.squared
+})
+
+lin_df <- tibble(
+  gene = rownames(cnv_for_lin),
+  r2 = gene_lin_r2
+) |>
+  filter(!is.na(r2)) |>
+  arrange(desc(r2))
+
+ggplot(lin_df, aes(x = r2)) +
+  geom_histogram(bins = 40, fill = col_lineage_cnv, color = "white") +
+  labs(
+    title = "Lineage-explained variance of CNV",
+    x = "Adjusted R^2 (tissue as predictor)",
+    y = "Gene count"
+  )
+```
+
+## Mutation–CNV concordance (selected genes)
+
+### Interpretation Guide
+
+*   **Concordance Check:** These plots assess the relationship between gene mutations and copy number variations for selected genes (e.g., well-known oncogenes and tumor suppressors).
+*   **Expected Patterns:** For tumor suppressor genes, mutations are often accompanied by deletions of the wild-type allele (Loss of Heterozygosity - LOH). For oncogenes, activating mutations might coexist with amplifications. Conversely, mutually exclusive patterns might also be observed.
+*   **Data Integrity:** Unexpected patterns or lack of expected concordance for well-established genes might signal data quality issues or specific biological contexts.
+*   **`knitr::asis_output`:** If selected genes are not found in the data, a message will be displayed.
+
+```{r mut-cnv-concordance, fig.height=5}
+genes_check <- c("TP53", "KRAS", "PIK3CA", "MYC", "CDKN2A")
+mutated_counts <- rowSums(mut_binary, na.rm = TRUE)
+mutated_genes <- names(sort(mutated_counts, decreasing = TRUE))
+genes_check <- intersect(genes_check, mutated_genes)
+
+plot_concordance <- function(g) {
+  if (!(g %in% rownames(mut_mat)) || !(g %in% rownames(cnv_mat))) {
+    return(NULL)
+  }
+  mut_status <- mut_binary[g, ]
+  cnv_vals <- cnv_mat[g, ]
+  common <- intersect(names(mut_status), colnames(cnv_mat))
+  mut_status <- mut_status[common]
+  cnv_vals <- cnv_vals[common]
+  df <- tibble(
+    sampleid = common,
+    mutated = mut_status == 1,
+    cnv = cnv_vals
+  )
+  # trim extreme CNV for display but keep counts
+  trimmed <- df |> mutate(cnv_trim = pmin(cnv, 8))
+  ggplot(trimmed, aes(x = mutated, y = cnv_trim)) +
+    geom_boxplot(outlier.shape = NA, fill = col_cnv_box, alpha = 0.35) +
+    geom_jitter(
+      width = 0.12,
+      height = 0,
+      size = 1.2,
+      alpha = 0.4,
+      color = "grey30"
+    ) +
+    scale_y_continuous(labels = comma) +
+    labs(
+      title = paste0(g, ": CNV by mutation status"),
+      subtitle = "CNV values capped at 8 for display",
+      x = "Mutated",
+      y = "CNV value"
+    )
+}
+
+plots <- purrr::map(genes_check, plot_concordance)
+plots <- Filter(Negate(is.null), plots)
+if (length(plots)) {
+  invisible(lapply(plots, print))
+} else {
+  DT::datatable(
+    tibble(Message = "Selected genes not found for mutation–CNV concordance."),
+    options = list(dom = 't')
+  )
+}
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

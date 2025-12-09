@@ -1,0 +1,884 @@
+---
+title: "CCLE Epigenetics (RRBS) Quality Control"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook drafts the quality control (QC) diagnostics for the CCLE epigenetics assays included in the PharmacoSet. The focus is on the RRBS-derived promoter, CpG island, and enhancer methylation profiles. The first section reviews the data contents and performs simple exploratory analyses. The downstream QC section surfaces sample-level missingness, coverage indicators, cross-assay concordance, and tissue-level methylation patterns that commonly reveal technical artifacts in methylation experiments.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(CoreGx)
+  library(PharmacoGx)
+  library(SummarizedExperiment)
+  library(MultiAssayExperiment)
+  library(tidyverse)
+  library(scales)
+  library(here)
+  library(matrixStats)
+  library(patchwork)
+  library(GenomicRanges)
+  library(rlang)
+  library(DT) # Added for interactive tables
+})
+
+source(here::here("qc", "qc_palette.R"))
+
+col_missing <- palette_classic[3]
+col_highlight <- palette_classic[2]
+col_histogram <- palette_classic[1]
+
+fraction_missing <- function(mat) {
+  mean(is.na(mat))
+}
+
+sample_missingness <- function(mat) {
+  colMeans(is.na(mat))
+}
+
+feature_missingness <- function(mat) {
+  rowMeans(is.na(mat))
+}
+
+trim_range <- function(x, probs = c(0.05, 0.95)) {
+  rng <- quantile(x, probs, na.rm = TRUE)
+  if (any(is.na(rng))) {
+    rng <- range(x, na.rm = TRUE)
+  }
+  if (any(is.infinite(rng)) || any(is.na(rng))) {
+    rng <- NULL
+  }
+  rng
+}
+```
+
+## Data Access
+
+### Interpretation Guide
+
+*   **Assay Types:** This section loads various RRBS (Reduced Representation Bisulfite Sequencing) assays, which are used to measure DNA methylation. Different assays target specific genomic regions (e.g., promoters, CpG islands, enhancers).
+*   **Summary Table (`rrbs_overview`):** Provides a high-level summary of each RRBS assay, including sample and feature counts, fraction of missing data, and median coverage. High missingness or low coverage in an assay can indicate data quality issues.
+
+```{r data-access}
+project_root <- here::here()
+knitr::opts_knit$set(root.dir = project_root)
+
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet file not found: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+assay_mae <- PharmacoGx::molecularProfiles(pset)
+assay_names <- names(MultiAssayExperiment::experiments(assay_mae))
+rrbs_names <- grep("^rrbs", assay_names, value = TRUE)
+if (!length(rrbs_names)) {
+  stop("No RRBS assays were found in the PharmacoSet.")
+}
+
+rrbs <- MultiAssayExperiment::experiments(assay_mae)[rrbs_names]
+cell_meta <- CoreGx::cellInfo(pset) |>
+  as_tibble() |>
+  mutate(sampleid = as.character(sampleid))
+
+tissue_candidates <- c(
+  "CCLE.site_Primary",
+  "CCLE.histology",
+  "cellosaurus.diseases"
+)
+available_tissue <- intersect(tissue_candidates, names(cell_meta))
+
+cell_meta <- cell_meta |>
+  mutate(
+    tissue_label = if (length(available_tissue)) {
+      coalesce(!!!rlang::syms(available_tissue))
+    } else {
+      NA_character_
+    },
+    tissue_label = ifelse(
+      is.na(tissue_label) | tissue_label == "",
+      "unspecified",
+      tissue_label
+    ),
+    histology_label = coalesce(CCLE.histology, tissue_label),
+    is_melanoma = str_detect(tolower(histology_label), "melanoma")
+  )
+
+rrbs_overview <- purrr::imap_dfr(rrbs, function(se, name) {
+  mat <- SummarizedExperiment::assay(se, "exprs")
+  feature_meta <- as.data.frame(SummarizedExperiment::rowData(se))
+  coverage <- if ("avg_coverage" %in% names(feature_meta)) {
+    median(feature_meta$avg_coverage, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+  tibble(
+    assay = name,
+    datatype = se@metadata$datatype,
+    feature_type = se@metadata$feature_type,
+    samples = ncol(mat),
+    features = nrow(mat),
+    missing_fraction = fraction_missing(mat),
+    median_coverage = coverage
+  )
+})
+
+DT::datatable(
+  rrbs_overview,
+  colnames = c(
+    "Assay",
+    "Data Type",
+    "Feature Type",
+    "Samples",
+    "Features",
+    "Missing Fraction",
+    "Median Coverage"
+  ),
+  caption = "RRBS Assay Overview.",
+  options = list(dom = 't', scrollX = TRUE)
+)
+
+```
+
+## Gene-Level Promoter and Expression Maps
+
+### Interpretation Guide
+
+*   **Gene-Level Aggregation:** This section provides helper functions to aggregate methylation and gene expression data to a gene level. This is crucial for comparing two different molecular profiles that might have different feature definitions (e.g., specific CpG sites vs. gene expression).
+*   **Promoter Methylation:** The methylation values (`beta`) represent the fraction of methylated CpG sites in promoter regions. High beta values indicate hypermethylation, often associated with gene silencing.
+
+```{r gene-level-helpers}
+promoter_se <- rrbs[["rrbs.tss_1kb"]]
+expr_gene_se <- MultiAssayExperiment::experiments(assay_mae)[[
+  "rnaseq.genes_tpm"
+]]
+
+aggregate_promoter_by_gene <- function(se) {
+  mat <- SummarizedExperiment::assay(se, "exprs")
+  gene <- S4Vectors::mcols(SummarizedExperiment::rowRanges(se))$gene_symbol
+  keep <- !is.na(gene) & gene != ""
+  gene_split <- split(seq_len(nrow(mat))[keep], gene[keep])
+  agg <- vapply(
+    gene_split,
+    function(idx) {
+      matrixStats::colMeans2(mat[idx, , drop = FALSE], na.rm = TRUE)
+    },
+    numeric(ncol(mat))
+  )
+  agg <- t(agg)
+  colnames(agg) <- colnames(mat)
+  agg
+}
+
+promoter_gene_mat <- aggregate_promoter_by_gene(promoter_se)
+promoter_gene_long <- as_tibble(promoter_gene_mat, rownames = "gene") |>
+  pivot_longer(-gene, names_to = "sampleid", values_to = "beta")
+
+get_promoter_vector <- function(gene_symbol) {
+  subset <- promoter_gene_long |>
+    filter(gene == gene_symbol) |>
+    select(sampleid, beta)
+  if (!nrow(subset)) {
+    return(NULL)
+  }
+  subset
+}
+
+get_expression_vector <- function(gene_symbol) {
+  rd <- SummarizedExperiment::rowData(expr_gene_se)
+  idx <- which(rd$gene_name == gene_symbol)
+  if (!length(idx)) {
+    return(NULL)
+  }
+  expr_mat <- SummarizedExperiment::assay(expr_gene_se, "exprs")
+  vals <- matrixStats::colMeans2(expr_mat[idx, , drop = FALSE], na.rm = TRUE)
+  tibble(
+    sampleid = colnames(expr_mat),
+    expr_log2 = log2(vals + 1)
+  )
+}
+```
+
+## Methylation–Expression Concordance (paper Extended Data analogue)
+
+### Interpretation Guide (Histogram)
+
+*   **Negative Correlation:** Promoter methylation is generally inversely correlated with gene expression. Therefore, a distribution of Pearson correlation coefficients that is skewed towards negative values (as observed here) provides strong biological validation for the dataset.
+*   **Central Tendency:** The peak of the histogram should be in the negative range, indicating a global trend of promoter hypermethylation leading to reduced gene expression.
+
+```{r meth-exp-corr, fig.height=5}
+expr_mat <- SummarizedExperiment::assay(expr_gene_se, "exprs")
+expr_gene_names <- SummarizedExperiment::rowData(expr_gene_se)$gene_name
+expr_tpm <- expr_mat
+rownames(expr_tpm) <- expr_gene_names
+
+common_samples <- intersect(colnames(promoter_gene_mat), colnames(expr_tpm))
+
+gene_cor_df <- tibble(gene = rownames(promoter_gene_mat)) |>
+  mutate(
+    cor = purrr::map_dbl(gene, function(g) {
+      meth <- promoter_gene_mat[g, common_samples, drop = TRUE]
+      idx <- which(expr_gene_names == g)
+      if (!length(idx)) {
+        return(NA_real_)
+      }
+      expr_vec <- matrixStats::colMeans2(
+        expr_tpm[idx, common_samples, drop = FALSE],
+        na.rm = TRUE
+      )
+      if (length(expr_vec) != length(meth)) {
+        return(NA_real_)
+      }
+      if (all(is.na(meth)) || all(is.na(expr_vec))) {
+        return(NA_real_)
+      }
+      cor(meth, expr_vec, use = "complete.obs")
+    })
+  ) |>
+  filter(!is.na(cor)) |>
+  mutate(
+    label = ifelse(
+      gene %in% c("SOX10", "PAX8", "HNF1B", "HNF4A", "GRHL2"),
+      gene,
+      NA_character_
+    )
+  )
+
+ggplot(gene_cor_df, aes(x = cor)) +
+  geom_histogram(bins = 60, fill = col_histogram, color = "white") +
+  labs(
+    title = "Gene-level correlation: promoter methylation vs expression",
+    x = "Pearson correlation",
+    y = "Gene count"
+  )
+```
+
+### Interpretation Guide (Volcano Plot Analogue)
+
+*   **Broad Negative Correlations:** This scatter plot (acting as a volcano plot analogue) further illustrates the inverse relationship between promoter methylation and gene expression. Genes with high absolute negative correlation are typically important in gene regulation.
+*   **Lineage-Specific TFs:** Key lineage-specific transcription factors (like SOX10, PAX8) are highlighted. These genes often show strong methylation-expression concordance due to their critical roles in cell identity and differentiation, serving as biological positive controls.
+
+```{r meth-exp-volcano, fig.height=5}
+gene_cor_df <- gene_cor_df |>
+  mutate(
+    abs_cor = abs(cor),
+    label = ifelse(
+      gene %in% c("SOX10", "PAX8", "HNF1B", "HNF4A", "GRHL2"),
+      gene,
+      NA_character_
+    )
+  )
+
+ggplot(gene_cor_df, aes(x = cor, y = abs_cor)) +
+  geom_point(alpha = 0.35, size = 1.2, color = "grey50") +
+  geom_text(
+    data = subset(gene_cor_df, !is.na(label)),
+    aes(label = label),
+    size = 3,
+    vjust = -0.4,
+    color = col_highlight,
+    fontface = "bold"
+  ) +
+  labs(
+    title = "Broad negative correlations between methylation and expression",
+    x = "Pearson correlation (promoter beta vs log2 TPM)",
+    y = "|correlation|"
+  ) +
+  theme(legend.position = "none")
+```
+
+## Lineage TF examples (paper Fig. 2b analogue)
+
+### Interpretation Guide
+
+*   **Lineage-Specific Genes:** This section investigates the methylation-expression relationship for key transcription factors (TFs) known to be important for specific cell lineages (e.g., SOX10 in melanoma).
+*   **Inverse Correlation:** For these TFs, promoter hypermethylation is expected to be associated with lower gene expression in cell lines of a specific lineage where the TF is active, and vice-versa. This serves as a critical biological validation of the methylation data's functional relevance.
+*   **Highlighting:** Specific cell lineages are highlighted to visually confirm these relationships.
+
+```{r lineage-panels, fig.height=5}
+plot_gene_panel <- function(gene, highlight_regex = NULL) {
+  meth <- get_promoter_vector(gene)
+  expr <- get_expression_vector(gene)
+  # Ensure both meth and expr are data frames and not empty
+  if (!is.data.frame(meth) || nrow(meth) == 0 || !is.data.frame(expr) || nrow(expr) == 0) {
+    return(
+      ggplot() + theme_void() + labs(title = paste("Missing data for", gene))
+    )
+  }
+  df <- left_join(meth, expr, by = "sampleid")
+  df <- left_join(df, cell_meta, by = "sampleid")
+
+  df <- df |>
+    mutate(
+      lineage = case_when(
+        !is.null(highlight_regex) &
+          str_detect(tolower(histology_label), highlight_regex) ~ "highlight",
+        is_melanoma ~ "melanoma",
+        TRUE ~ "other"
+      )
+    )
+
+  ggplot(df, aes(x = beta, y = expr_log2)) +
+    geom_point(
+      aes(color = lineage, shape = lineage),
+      size = 2,
+      alpha = 0.8
+    ) +
+    scale_color_manual(
+      values = c(
+        highlight = col_histogram,
+        melanoma = col_highlight,
+        other = "grey65"
+      )
+    ) +
+    scale_shape_manual(values = c(highlight = 17, melanoma = 3, other = 16)) +
+    labs(
+      title = paste0(gene, ": promoter methylation vs expression"),
+      x = paste0(gene, " promoter methylation (beta)"),
+      y = paste0(gene, " mRNA (log2 TPM + 1)"),
+      color = NULL,
+      shape = NULL
+    ) +
+    theme(legend.position = "none")
+}
+
+p_sox10 <- plot_gene_panel("SOX10", "melanoma")
+p_pax8 <- plot_gene_panel("PAX8", "ovary|renal|kidney|thyroid")
+p_hnf1b <- plot_gene_panel("HNF1B", "biliary|gastro|intestinal|hepato|pancreas")
+p_grhl2 <- plot_gene_panel("GRHL2", "lung|breast|epithelial")
+
+(p_sox10 | p_pax8) / (p_hnf1b | p_grhl2)
+```
+
+## Promoter hypermethylation with silencing
+
+### Interpretation Guide
+
+*   **Gene Silencing:** This section visualizes specific examples where high promoter methylation (hypermethylation) leads to gene silencing (low or no gene expression). This is a fundamental regulatory mechanism in epigenetics.
+*   **Tissue Context:** The plots are colored by tissue label to see if hypermethylation and silencing patterns are specific to certain tissue types, which can highlight context-dependent gene regulation.
+
+```{r hypermethylation-panels, fig.height=5}
+plot_silencing_panel <- function(gene) {
+  meth <- get_promoter_vector(gene)
+  expr <- get_expression_vector(gene)
+  # Ensure both meth and expr are data frames and not empty
+  if (!is.data.frame(meth) || nrow(meth) == 0 || !is.data.frame(expr) || nrow(expr) == 0) {
+    return(
+      ggplot() + theme_void() + labs(title = paste("Missing data for", gene))
+    )
+  }
+  df <- left_join(meth, expr, by = "sampleid")
+  df <- left_join(df, cell_meta, by = "sampleid")
+
+  ggplot(df, aes(x = beta, y = expr_log2)) +
+    geom_point(aes(color = tissue_label), alpha = 0.8, size = 1.8) +
+    scale_color_manual(values = tissue_palette(df$tissue_label)) +
+    labs(
+      title = paste0(gene, ": promoter methylation vs expression"),
+      x = paste0(gene, " promoter methylation (beta)"),
+      y = paste0(gene, " mRNA (log2 TPM + 1)"),
+      color = "Tissue"
+    ) +
+    theme(legend.position = "none")
+}
+
+p_rpp25 <- plot_silencing_panel("RPP25")
+p_ldhb <- plot_silencing_panel("LDHB")
+p_vhl <- plot_silencing_panel("VHL")
+
+(p_rpp25 | p_ldhb | p_vhl)
+```
+
+## Lineage structure in methylation (PCA)
+
+### Interpretation Guide
+
+*   **Biological Clustering:** PCA (Principal Component Analysis) is used to reduce the dimensionality of the methylation data and visualize the primary sources of variation. Samples from the same tissue or lineage are expected to cluster together, indicating that biological factors drive the methylation patterns.
+*   **Outliers:** Samples that plot far from any cluster may represent technical artifacts or cell lines with unique epigenetic profiles.
+*   **Top Variable Promoters:** By focusing on the top variable promoters, the PCA is more likely to capture biologically relevant differences between samples.
+
+```{r methylation-pca, fig.height=5}
+promoter_for_pca <- promoter_gene_mat
+promoter_for_pca <- promoter_for_pca[
+  apply(promoter_for_pca, 1, function(x) mean(!is.na(x)) > 0.9),
+]
+top_var <- head(
+  order(
+    matrixStats::rowVars(promoter_for_pca, na.rm = TRUE),
+    decreasing = TRUE
+  ),
+  2000
+)
+mat_pca <- promoter_for_pca[top_var, ]
+mat_pca <- t(scale(t(mat_pca), center = TRUE, scale = TRUE))
+mat_pca[is.na(mat_pca)] <- 0
+
+pca <- prcomp(t(mat_pca), scale. = FALSE)
+
+if (ncol(pca$x) < 2) {
+  DT::datatable(
+    tibble(Message = "Not enough principal components to plot (less than 2 components). Skipping PCA plot."),
+    options = list(dom = 't')
+  )
+} else if (!is.data.frame(cell_meta) || nrow(cell_meta) == 0) {
+  DT::datatable(
+    tibble(Message = "Cell metadata (cell_meta) is not a valid data frame or is empty. Skipping PCA plot with tissue labels."),
+    options = list(dom = 't')
+  )
+} else {
+  pca_df <- as_tibble(pca$x[, 1:2], rownames = "sampleid") |>
+    left_join(cell_meta, by = "sampleid")
+
+  ggplot(pca_df, aes(x = PC1, y = PC2, color = tissue_label)) +
+    geom_point(alpha = 0.8, size = 1.8) +
+    scale_color_manual(values = tissue_palette(pca_df$tissue_label)) +
+    labs(
+      title = "PCA of promoter methylation (top variable promoters)",
+      x = "PC1",
+      y = "PC2",
+      color = "Tissue"
+    ) +
+    theme(legend.position = "none")
+}
+```
+
+## Exploratory Data Analysis
+
+### Interpretation Guide
+
+*   **Overview:** This section provides an initial look at the epigenetics data, including the scope of assays, distribution of methylation values, and overall data quality metrics like coverage and missingness.
+
+### Assay scope
+
+### Interpretation Guide (Samples per Assay)
+
+*   **Sample Counts:** This bar chart shows the number of samples available for each RRBS assay (e.g., promoter_1kb, cgi_cpg_clusters). Consistent sample counts across assays are ideal, while significant discrepancies may indicate data availability issues for specific regions.
+
+```{r assay-scope, fig.height=4}
+ggplot(rrbs_overview, aes(x = assay, y = samples, fill = assay)) +
+  geom_col(show.legend = FALSE, width = 0.6) +
+  scale_fill_manual(values = fill_palette(nrow(rrbs_overview))) +
+  labs(
+    title = "Samples per RRBS assay",
+    x = NULL,
+    y = "Samples"
+  )
+```
+
+### Interpretation Guide (Feature Counts)
+
+*   **Feature Counts:** This bar chart displays the number of genomic features (e.g., promoters, CpG islands) quantified by each RRBS assay. Higher feature counts generally provide a more comprehensive view of the epigenome.
+
+```{r assay-features, fig.height=4}
+ggplot(rrbs_overview, aes(x = assay, y = features, fill = assay)) +
+  geom_col(show.legend = FALSE, width = 0.6) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_manual(values = fill_palette(nrow(rrbs_overview))) +
+  labs(
+    title = "Feature counts by assay",
+    x = NULL,
+    y = "Features"
+  )
+```
+
+### Beta value distributions
+
+### Interpretation Guide
+
+*   **Bimodal Distribution:** Methylation beta values (ranging from 0 to 1) are typically bimodally distributed, with peaks near 0 (unmethylated) and 1 (fully methylated), and a trough in between. This reflects the biological reality of CpG sites being either methylated or unmethylated.
+*   **Assay Differences:** Differences in the shape of the distribution between assays might reflect distinct biological properties of the targeted genomic regions.
+
+```{r beta-distribution, fig.height=5}
+beta_samples <- purrr::imap_dfr(rrbs, function(se, name) {
+  mat <- SummarizedExperiment::assay(se, "exprs")
+  vals <- as.numeric(mat)
+  vals <- vals[!is.na(vals)]
+  if (length(vals) > 50000) {
+    vals <- sample(vals, 50000)
+  }
+  tibble(
+    assay = name,
+    beta_value = vals
+  )
+})
+
+ggplot(beta_samples, aes(x = beta_value, fill = assay)) +
+  geom_density(alpha = 0.25) +
+  scale_fill_manual(values = fill_palette(length(unique(beta_samples$assay)))) +
+  labs(
+    title = "Distribution of methylation beta values",
+    x = "Beta value",
+    y = "Density"
+  ) +
+  theme(legend.position = "top")
+```
+
+### Coverage and missingness
+
+### Interpretation Guide (Average Coverage)
+
+*   **Read Depth:** This boxplot shows the distribution of average read depth (coverage) per feature for each RRBS assay. Adequate coverage is essential for reliable methylation calls. Low coverage can lead to higher missingness and unreliable data.
+*   **Trimmed Range:** The y-axis is trimmed to the 5th–95th percentile to focus on the bulk of the data and reduce the impact of extreme outliers.
+
+```{r coverage-missingness, fig.height=5}
+coverage_long <- purrr::imap_dfr(rrbs, function(se, name) {
+  rd <- as.data.frame(SummarizedExperiment::rowData(se))
+  tibble(
+    assay = name,
+    avg_coverage = if ("avg_coverage" %in% names(rd)) {
+      rd$avg_coverage
+    } else {
+      NA_real_
+    },
+    num_cpg_sites = if ("num_cpg_sites" %in% names(rd)) {
+      rd$num_cpg_sites
+    } else {
+      NA_real_
+    }
+  )
+})
+
+coverage_ylim <- trim_range(coverage_long$avg_coverage)
+
+ggplot(coverage_long, aes(x = assay, y = avg_coverage, fill = assay)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  scale_fill_manual(
+    values = fill_palette(length(unique(coverage_long$assay)))
+  ) +
+  coord_cartesian(ylim = coverage_ylim) +
+  labs(
+    title = "Average coverage per feature",
+    x = NULL,
+    y = "Median read depth (trimmed to 5th–95th percentile)"
+  )
+```
+
+### Interpretation Guide (Sample Missingness)
+
+*   **Fraction Missing:** This boxplot displays the proportion of missing methylation values per sample across different assays. High sample-level missingness can indicate poor sample quality, low DNA input, or technical issues during library preparation or sequencing. Samples with unusually high missingness should be flagged.
+
+```{r missingness, fig.height=4.5}
+missing_by_sample <- purrr::imap_dfr(rrbs, function(se, name) {
+  mat <- SummarizedExperiment::assay(se, "exprs")
+  tibble(
+    assay = name,
+    sampleid = colnames(mat),
+    missing_fraction = sample_missingness(mat)
+  )
+})
+
+ggplot(missing_by_sample, aes(x = assay, y = missing_fraction, fill = assay)) +
+  geom_boxplot(outlier.alpha = 0.25) +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(
+    values = fill_palette(length(unique(missing_by_sample$assay)))
+  ) +
+  labs(
+    title = "Sample-level missingness",
+    x = NULL,
+    y = "Fraction missing"
+  )
+```
+
+## Downstream QC
+
+### Interpretation Guide
+
+*   **Overview:** This section focuses on identifying potential quality issues at the sample and feature level, assessing cross-assay consistency, and looking for expected biological patterns.
+
+### Sample-level flags
+
+### Interpretation Guide
+
+*   **High Missingness:** Samples with a high fraction of missing methylation values (e.g., >20%) are flagged as potentially low quality. These samples may have suffered from poor DNA quality, insufficient sequencing depth, or technical problems during library preparation.
+*   **Actionable Insights:** This table highlights the top samples with high missingness. These samples should be carefully reviewed and potentially excluded from downstream analyses if their quality issues are confirmed.
+
+```{r sample-flags}
+# Add explicit check for missing_by_sample before group_by
+if (!is.data.frame(missing_by_sample) || nrow(missing_by_sample) == 0) {
+  DT::datatable(
+    tibble(Message = "Sample missingness data (missing_by_sample) is not a valid data frame or is empty. Skipping sample-level flags."),
+    options = list(dom = 't')
+  )
+} else {
+  sample_qc <- missing_by_sample |>
+    group_by(assay) |>
+    mutate(
+      flag_high_missing = missing_fraction > 0.2
+    ) |>
+    ungroup() |>
+    left_join(cell_meta, by = "sampleid")
+
+  DT::datatable(
+    sample_qc %>%
+      filter(flag_high_missing) %>%
+      arrange(desc(missing_fraction)) %>%
+      head(15),
+    colnames = c(
+      "Assay",
+      "Sample ID",
+      "Missing Fraction",
+      "Flag High Missing",
+      names(cell_meta)[-1]
+    ),
+    caption = "Top 15 Samples Flagged for High Missingness.",
+    options = list(dom = 't', scrollX = TRUE)
+  )
+}
+```
+
+```{r sample-qc-plot, fig.height=4.5}
+# Ensure sample_qc exists before plotting
+if (exists("sample_qc") && is.data.frame(sample_qc) && nrow(sample_qc) > 0) {
+  ggplot(
+    sample_qc,
+    aes(x = missing_fraction, y = reorder(sampleid, missing_fraction))
+  ) +
+    geom_point(aes(color = flag_high_missing), size = 1.6) +
+    facet_wrap(~assay, scales = "free_y") +
+    scale_x_continuous(labels = percent) +
+    scale_color_manual(values = c(`FALSE` = "grey50", `TRUE` = col_highlight)) +
+    labs(
+      title = "Samples ordered by missingness",
+      x = "Missing fraction",
+      y = NULL,
+      color = "High missingness"
+    ) +
+    theme(
+      strip.text = element_text(face = "bold"),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+} else {
+  DT::datatable(
+    tibble(Message = "Sample QC data (sample_qc) is not available or empty. Skipping sample-level QC plot."),
+    options = list(dom = 't')
+  )
+}
+```
+
+```{r sample-means-prep}
+# Pre-compute sample-level mean beta values for downstream plots
+sample_means <- purrr::imap_dfr(rrbs, function(se, name) {
+  mat <- SummarizedExperiment::assay(se, "exprs")
+  tibble(
+    assay = name,
+    sampleid = colnames(mat),
+    mean_beta = colMeans(mat, na.rm = TRUE),
+    missing_fraction = sample_missingness(mat)
+  )
+}) |>
+  left_join(cell_meta, by = "sampleid")
+
+# Ensure tissue columns exist before coalescing
+if (!"tissue" %in% names(sample_means)) sample_means$tissue <- NA_character_
+if (!"tissue_label" %in% names(sample_means)) sample_means$tissue_label <- NA_character_
+
+sample_means <- sample_means |>
+  mutate(tissue = dplyr::coalesce(tissue, tissue_label, "unspecified"))
+
+sample_mean_wide <- sample_means |>
+  select(sampleid, assay, mean_beta) |>
+  pivot_wider(names_from = assay, values_from = mean_beta)
+```
+
+### Tissue-level global methylation
+
+### Interpretation Guide
+
+*   **Global Methylation Patterns:** This boxplot shows the mean methylation beta value per sample, grouped by collapsed tissue types. Different tissues are expected to have distinct global methylation patterns, reflecting their unique epigenetic landscapes.
+*   **Technical Artifacts:** Consistent shifts or unusual distributions within a tissue type might indicate technical artifacts (e.g., batch effects) that affect global methylation levels.
+*   **Hypomethylation Check (Suggestion):** Some cancer types (e.g., specific leukemias) are known to exhibit global hypomethylation. If such cancer types are present in the cohort, a more focused analysis could investigate if this biological expectation is met by comparing their mean beta values to other tissue types.
+
+```{r tissue-level, fig.height=5}
+# Ensure sample_means is a valid data frame before plotting
+if (!is.data.frame(sample_means) || nrow(sample_means) == 0) {
+  DT::datatable(
+    tibble(Message = "Sample mean data (sample_means) is not available or empty. Skipping tissue-level global methylation plot."),
+    options = list(dom = 't')
+  )
+} else {
+  if (!"tissue" %in% names(sample_means)) {
+    sample_means <- sample_means |>
+      mutate(tissue = "unspecified")
+  }
+
+  tissue_counts <- sort(table(sample_means[["tissue"]]), decreasing = TRUE)
+  top_tissues <- names(head(tissue_counts, 12))
+
+  sample_means$tissue_collapsed <- ifelse(
+    sample_means[["tissue"]] %in% top_tissues,
+    sample_means[["tissue"]],
+    "other"
+  )
+
+  ggplot(sample_means, aes(x = tissue_collapsed, y = mean_beta, fill = assay)) +
+    geom_boxplot(outlier.alpha = 0.2) +
+    scale_fill_manual(
+      values = fill_palette(length(unique(sample_means$assay)))
+    ) +
+    labs(
+      title = "Global methylation by tissue (top tissues)",
+      x = NULL,
+      y = "Mean beta value"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+### Cross-assay concordance
+
+### Interpretation Guide
+
+*   **Consistency Check:** This heatmap displays the Pearson correlation between global methylation profiles across different RRBS assays (e.g., promoter_1kb, cgi_cpg_clusters). High positive correlations (closer to 1) indicate good concordance between assays, suggesting that different genomic regions exhibit similar overall methylation patterns across samples.
+*   **Assay Specificity:** While overall concordance is expected, slight variations may reflect true biological differences in methylation patterns between distinct genomic features.
+
+```{r cross-assay, fig.height=4.5}
+# Ensure sample_mean_wide is a valid data frame before correlation
+assay_cols <- setdiff(names(sample_mean_wide), "sampleid")
+
+if (!is.data.frame(sample_mean_wide) || nrow(sample_mean_wide) < 2 || length(assay_cols) < 2) {
+  DT::datatable(
+    tibble(Message = "Insufficient sample mean data (sample_mean_wide) for cross-assay concordance. Skipping heatmap."),
+    options = list(dom = 't')
+  )
+} else {
+  corr_mat <- cor(
+    sample_mean_wide[, assay_cols],
+    use = "pairwise.complete.obs"
+  )
+
+  corr_df <- as.data.frame(as.table(corr_mat)) |>
+    rename(assay_x = Var1, assay_y = Var2, correlation = Freq)
+
+  ggplot(corr_df, aes(x = assay_x, y = assay_y, fill = correlation)) +
+    geom_tile() +
+    scale_fill_gradient2(
+      low = "#08306B",
+      mid = "white",
+      high = "#7F0000",
+      midpoint = 0.5,
+      limits = c(0, 1)
+    ) +
+    labs(
+      title = "Sample-level concordance across RRBS assays",
+      x = NULL,
+      y = NULL,
+      fill = "Pearson r"
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+### Feature variability
+
+### Interpretation Guide
+
+*   **IQR Distribution:** This boxplot visualizes the interquartile range (IQR) of methylation beta values for features within each RRBS assay. A wider IQR indicates greater variability in methylation levels for those features across samples, which can be biologically interesting (e.g., variably methylated regions).
+*   **Data Spread:** Consistent distributions across assays suggest uniform data quality. Outliers might represent features with unusually high or low variability, which might be worth investigating.
+
+```{r feature-variability-data, message=FALSE}
+# Compute per-feature IQRs for each assay
+feature_variability <- purrr::imap_dfr(rrbs, function(se, name) {
+  mat <- SummarizedExperiment::assay(se, "exprs")
+  iqr_vals <- matrixStats::rowIQRs(mat, na.rm = TRUE)
+  tibble(assay = name, iqr = iqr_vals)
+})
+```
+
+```{r feature-variability, fig.height=5}
+# Ensure feature_variability is a valid data frame before plotting
+if (!is.data.frame(feature_variability) || nrow(feature_variability) == 0) {
+  DT::datatable(
+    tibble(Message = "Feature variability data (feature_variability) is not available or empty. Skipping feature variability plot."),
+    options = list(dom = 't')
+  )
+} else {
+  iqr_ylim <- trim_range(feature_variability$iqr)
+
+  ggplot(feature_variability, aes(x = assay, y = iqr, fill = assay)) +
+    geom_boxplot(outlier.alpha = 0.2) +
+    scale_fill_manual(
+      values = fill_palette(length(unique(feature_variability$assay)))
+    ) +
+    coord_cartesian(ylim = iqr_ylim) +
+    labs(
+      title = "Feature-level variability (IQR of beta values)",
+      x = NULL,
+      y = "IQR"
+    ) +
+    theme(legend.position = "none")
+}
+```
+
+### Bisulfite Conversion Rate
+
+### Interpretation Guide
+
+*   **Conversion Efficiency:** The bisulfite conversion rate is a critical quality metric for all bisulfite sequencing experiments. It reflects the efficiency of converting unmethylated cytosines to uracils, while methylated cytosines remain unchanged.
+*   **High Conversion:** A high conversion rate (typically >98-99%) is expected. Lower rates can lead to overestimation of methylation levels and compromise the accuracy of results.
+*   **Sample Variability:** Consistent conversion rates across samples indicate technical reproducibility. Outliers with low conversion rates should be flagged as potentially problematic.
+
+```{r bisulfite-conversion-rate}
+bisulfite_col_candidates <- c(
+  "bisulfite_conversion_rate",
+  "bisulfite_pct",
+  "conversion_rate"
+)
+
+conversion_data <- purrr::imap_dfr(rrbs, function(se, name) {
+  rd <- as.data.frame(SummarizedExperiment::rowData(se))
+  if (any(bisulfite_col_candidates %in% names(rd))) {
+    conversion_col <- intersect(bisulfite_col_candidates, names(rd))[1]
+    tibble(
+      assay = name,
+      feature_id = rownames(rd),
+      conversion_rate = rd[[conversion_col]]
+    )
+  } else {
+    NULL
+  }
+})
+
+if (nrow(conversion_data) > 0) {
+  ggplot(conversion_data, aes(x = assay, y = conversion_rate, fill = assay)) +
+    geom_boxplot(outlier.alpha = 0.2) +
+    scale_y_continuous(labels = percent) +
+    scale_fill_manual(
+      values = fill_palette(length(unique(conversion_data$assay)))
+    ) +
+    labs(
+      title = "Bisulfite Conversion Rate per Assay",
+      x = NULL,
+      y = "Bisulfite Conversion Rate"
+    ) +
+    theme(legend.position = "none")
+} else {
+  DT::datatable(
+    tibble(
+      Message = "No bisulfite conversion rate information found in feature metadata (checked columns: bisulfite_conversion_rate, bisulfite_pct, conversion_rate)."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```
