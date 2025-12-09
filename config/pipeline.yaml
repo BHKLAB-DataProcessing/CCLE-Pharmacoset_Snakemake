@@ -78,6 +78,12 @@ molecularProfiles:
       url: https://gygi.hms.harvard.edu/data/ccle/protein_quant_current_normalized.csv.gz
       sample_info_url: https://gygi.hms.harvard.edu/data/ccle/Table_S1_Sample_Information.xlsx
 
+  chromatin:
+    global_mrm:
+      description: Global histone post-translational modification profiling measured by MRM (CCLE 2018-11-30 release).
+      release: '2018-11-30'
+      url: ../CCLE_2019/primary/CCLE_GlobalChromatinProfiling_20181130.csv
+
 
   epigenetics:
     methylation_rrbs:
