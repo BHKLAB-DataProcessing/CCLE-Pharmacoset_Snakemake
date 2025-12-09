@@ -22,6 +22,7 @@ include: "workflow/rules/epigenetics.smk"
 include: "workflow/rules/metabolomics.smk"
 include: "workflow/rules/mirna.smk"
 include: "workflow/rules/exon.smk"
+include: "workflow/rules/cnv_segments.smk"
 
 # Until the mtime() issue of gcs storage is resolved for directories, we need to explicitly
 # specify all the export results.
@@ -75,6 +76,7 @@ rule build_MultiAssayExperiment:
             rules.make_miRNA_SE.output.mirna_mimat_se,
             rules.make_ExonUsage_SE.output.exon_ratio_se,
             rules.make_ExonUsage_SE.output.exon_denom_se,
+            rules.make_CNV_segments_RE.output.cnv_segments,
         ],
         sampleMetadata=rules.annotate_sampleMetadata.output.sampleMetadata,
     output:

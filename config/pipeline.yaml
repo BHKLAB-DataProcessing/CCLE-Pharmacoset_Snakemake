@@ -62,6 +62,9 @@ molecularProfiles:
       description: TODO::(add description)
       tool: TODO::(add tool)
       url: https://depmap.org/portal/download/api/download?file_name=downloads-by-canonical-id%2Fpublic-25q3-b56c.61%2FOmicsCNGeneWGS.csv&dl_name=OmicsCNGeneWGS.csv&bucket=depmap-external-downloads
+    segments_wgs:
+      description: Segment-level WGS copy number profiles.
+      url: ../CCLE_2019/other/OmicsCNSegmentsWGS.csv
   
   rppa:
     tcpa_rppa500:
