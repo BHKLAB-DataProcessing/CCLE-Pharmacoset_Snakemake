@@ -21,9 +21,10 @@ include: "workflow/rules/massspec.smk"
 include: "workflow/rules/epigenetics.smk"
 include: "workflow/rules/metabolomics.smk"
 include: "workflow/rules/mirna.smk"
+include: "workflow/rules/exon.smk"
 
 # Until the mtime() issue of gcs storage is resolved for directories, we need to explicitly
-# specificy all the export results.
+# specify all the export results.
 # this is tedious since we only know this after we go through the ExportPset Script
 
 exports = [
@@ -72,6 +73,8 @@ rule build_MultiAssayExperiment:
             rules.make_Metabolomics_SE.output.metabolomics_se,
             rules.make_miRNA_SE.output.mirna_gct_se,
             rules.make_miRNA_SE.output.mirna_mimat_se,
+            rules.make_ExonUsage_SE.output.exon_ratio_se,
+            rules.make_ExonUsage_SE.output.exon_denom_se,
         ],
         sampleMetadata=rules.annotate_sampleMetadata.output.sampleMetadata,
     output:
