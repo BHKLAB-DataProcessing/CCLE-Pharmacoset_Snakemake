@@ -84,6 +84,14 @@ molecularProfiles:
       release: '2018-11-30'
       url: ../CCLE_2019/primary/CCLE_GlobalChromatinProfiling_20181130.csv
 
+  fusion:
+    filtered:
+      description: STAR-Fusion filtered fusion calls (CCLE 2018-11-30 release).
+      url: ../CCLE_2019/supplemental/CCLE_Fusions_20181130.txt
+    unfiltered:
+      description: STAR-Fusion unfiltered fusion calls (CCLE 2018-11-30 release).
+      url: ../CCLE_2019/supplemental/CCLE_Fusions_unfiltered_20181130.txt
+    preferred: filtered
 
   epigenetics:
     methylation_rrbs:
