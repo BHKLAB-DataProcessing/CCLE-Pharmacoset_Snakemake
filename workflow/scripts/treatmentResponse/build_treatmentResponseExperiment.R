@@ -16,15 +16,15 @@ if (exists("snakemake")) {
     file.path("snapshots/", paste0(snakemake@rule, ".RData"))
   )
 } else {
-  if (file.exists(file.path("snapshots/", paste0(snakemake@rule, ".RData")))) {
-    load(file.path("snapshots/", paste0(snakemake@rule, ".RData")))
-  }
-} else {
-  if (file.exists(file.path("snapshots/", paste0(snakemake@rule, ".RData")))) {
-    load(file.path("snapshots/", paste0(snakemake@rule, ".RData")))
+  snapshot_path <- "snapshots/build_treatmentResponseExperiment.RData"
+  if (file.exists(snapshot_path)) {
+    load(snapshot_path)
   }
 }
-load("resources/build_treatmentResponseExperiment.RData")
+resource_snapshot <- "resources/build_treatmentResponseExperiment.RData"
+if (file.exists(resource_snapshot)) {
+  load(resource_snapshot)
+}
 snakemake@source("../metadata/cleanCharacterStrings.R")
 # 0.1 Startup
 # -----------

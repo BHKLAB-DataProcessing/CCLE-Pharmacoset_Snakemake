@@ -18,9 +18,16 @@ include: "workflow/rules/cnv.smk"
 include: "workflow/rules/mutation.smk"
 include: "workflow/rules/rppa.smk"
 include: "workflow/rules/massspec.smk"
+include: "workflow/rules/epigenetics.smk"
+include: "workflow/rules/metabolomics.smk"
+include: "workflow/rules/mirna.smk"
+include: "workflow/rules/exon.smk"
+include: "workflow/rules/cnv_segments.smk"
+include: "workflow/rules/chromatin.smk"
+include: "workflow/rules/fusion.smk"
 
 # Until the mtime() issue of gcs storage is resolved for directories, we need to explicitly
-# specificy all the export results.
+# specify all the export results.
 # this is tedious since we only know this after we go through the ExportPset Script
 
 exports = [
@@ -65,6 +72,15 @@ rule build_MultiAssayExperiment:
             rules.make_Mutation_SE.output.processedMutationSE,
             rules.make_RPPA_SE.output.rppa_se,
             rules.make_MassSpec_SE.output.massspec_se,
+            rules.make_Methylation_SE.output.methylation_se_list,
+            rules.make_Metabolomics_SE.output.metabolomics_se,
+            rules.make_miRNA_SE.output.mirna_gct_se,
+            rules.make_miRNA_SE.output.mirna_mimat_se,
+            rules.make_ExonUsage_SE.output.exon_ratio_se,
+            rules.make_ExonUsage_SE.output.exon_denom_se,
+            rules.make_CNV_segments_RE.output.cnv_segments,
+            rules.make_Chromatin_SE.output.chromatin_se,
+            rules.make_Fusion_SE.output.fusion_se,
         ],
         sampleMetadata=rules.annotate_sampleMetadata.output.sampleMetadata,
     output:

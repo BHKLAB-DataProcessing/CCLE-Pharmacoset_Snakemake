@@ -20,7 +20,10 @@ if (exists("snakemake")) {
     load(file.path("snapshots/", paste0(snakemake@rule, ".RData")))
   }
 }
-load(file.path("resources/make_Mutation_SE.RData"))
+mutation_cache <- file.path("resources/make_Mutation_SE.RData")
+if (file.exists(mutation_cache)) {
+  load(mutation_cache)
+}
 
 message("Loading mutation data")
 input <- readRDS(INPUT$preprocessedMutation)

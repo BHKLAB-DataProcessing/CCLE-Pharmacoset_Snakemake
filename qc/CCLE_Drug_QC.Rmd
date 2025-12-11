@@ -1,0 +1,451 @@
+---
+title: "CCLE Drug Sensitivity Quality Control"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook drafts quality control (QC) diagnostics for the CCLE drug sensitivity data included in the PharmacoSet. It covers key metrics for assessing the quality and consistency of drug response measurements, including the distribution of sensitivity values (e.g., AUC, IC50), replication concordance, and verification of known drug-gene interactions.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(CoreGx)
+  library(PharmacoGx)
+  library(SummarizedExperiment)
+  library(MultiAssayExperiment)
+  library(tidyverse)
+  library(scales)
+  library(here)
+  library(matrixStats)
+  library(patchwork)
+  library(DT) # Added for interactive tables
+  library(data.table) # Required for manual assay extraction
+})
+
+source(here::here("qc", "qc_palette.R"))
+
+# Helper function for replicate correlation
+compute_replicate_correlation <- function(
+  df,
+  drug_col,
+  cell_col,
+  value_col,
+  replicate_col
+) {
+  df |>
+    select(
+      !!sym(drug_col),
+      !!sym(cell_col),
+      !!sym(value_col),
+      !!sym(replicate_col)
+    ) |>
+    pivot_wider(
+      names_from = !!sym(replicate_col),
+      values_from = !!sym(value_col),
+      names_prefix = "rep"
+    ) |>
+    rowwise() |>
+    mutate(
+      correlation = cor(
+        c(rep1, rep2),
+        c(rep1, rep2),
+        use = "pairwise.complete.obs"
+      )
+    )
+}
+
+```
+
+## Data Access
+
+### Interpretation Guide
+
+*   **Treatment Response Data:** This section loads the drug sensitivity data. We bypass standard accessors due to structural issues and manually extract processed sensitivity profiles (e.g., AAC, IC50) from the 'profiles' assay of the TreatmentResponseExperiment.
+*   **Metrics:** Key metrics include AAC (Area Above Curve), IC50 (Half-maximal Inhibitory Concentration), HS (Hill Slope), E_inf (Effect at infinite concentration), and EC50 (Effective Concentration 50).
+
+```{r data-access}
+project_root <- here::here()
+knitr::opts_knit$set(root.dir = project_root)
+
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet file not found: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+treatment_response <- PharmacoGx::treatmentResponse(pset)
+
+if (is.null(treatment_response)) {
+  stop("No treatment response data found in the PharmacoSet.")
+}
+
+# Manually extract sensitivity profiles from the 'profiles' assay
+# Standard accessors like sensitivityProfiles() fail due to missing 'dose' column in treatmentInfo
+if ("profiles" %in% assayNames(treatment_response)) {
+  sens_profiles <- as_tibble(assay(treatment_response, "profiles"))
+  message("Successfully extracted sensitivity profiles from 'profiles' assay.")
+} else {
+  stop(
+    "Critical Error: 'profiles' assay not found in TreatmentResponseExperiment. Cannot proceed."
+  )
+}
+
+# Clean up column names if needed (e.g., lowercase for consistency)
+# Common columns: treatmentid, sampleid, aac_recomputed, ic50_recomputed
+colnames(sens_profiles) <- tolower(colnames(sens_profiles))
+
+# Extract metadata
+drug_info <- PharmacoGx::drugInfo(pset)
+cell_info <- CoreGx::cellInfo(pset) |>
+  as_tibble() |>
+  mutate(sampleid = as.character(sampleid))
+
+# Overview of sensitivity profiles
+sens_overview <- tibble(
+  Num_Experiments = nrow(sens_profiles),
+  Num_Drugs = n_distinct(sens_profiles$treatmentid),
+  Num_CellLines = n_distinct(sens_profiles$sampleid),
+  Metrics = paste(
+    intersect(
+      colnames(sens_profiles),
+      c("aac_recomputed", "ic50_recomputed", "hs", "e_inf", "ec50")
+    ),
+    collapse = ", "
+  )
+)
+
+DT::datatable(
+  sens_overview,
+  colnames = c(
+    "Number of Experiments",
+    "Number of Drugs",
+    "Number of Cell Lines",
+    "Available Metrics"
+  ),
+  caption = "Drug Sensitivity Data Overview.",
+  options = list(dom = 't')
+)
+```
+
+## Exploratory Data Analysis
+
+### Interpretation Guide
+
+*   **Overview:** This section provides an initial characterization of the drug sensitivity data, including the distribution of sensitivity metrics.
+
+### Distribution of Sensitivity Metrics
+
+### Interpretation Guide
+
+*   **AAC (Area Above Curve):** Measures the total area above the dose-response curve. Higher AAC indicates greater drug sensitivity (more cell killing). Values typically range from 0 to 1 (or 0 to 100 depending on normalization).
+*   **IC50:** The concentration at which 50% of cells are inhibited. Lower IC50 indicates higher potency. Distributions are often plotted on a log scale.
+
+```{r sensitivity-distribution, fig.height=5}
+# AAC Distribution
+if ("aac_recomputed" %in% colnames(sens_profiles)) {
+  aac_data <- sens_profiles |>
+    select(aac_recomputed) |>
+    filter(!is.na(aac_recomputed))
+
+  p1 <- ggplot(aac_data, aes(x = aac_recomputed)) +
+    geom_histogram(bins = 50, fill = col1, color = "white") +
+    labs(
+      title = "Distribution of AAC Values",
+      x = "AAC (Recomputed)",
+      y = "Count"
+    ) +
+    theme_minimal(base_size = 12)
+  print(p1)
+} else {
+  DT::datatable(
+    tibble(Message = "AAC metric not found."),
+    options = list(dom = 't')
+  )
+}
+
+# IC50 Distribution
+if ("ic50_recomputed" %in% colnames(sens_profiles)) {
+  ic50_data <- sens_profiles |>
+    select(ic50_recomputed) |>
+    filter(!is.na(ic50_recomputed) & ic50_recomputed > 0) # Filter non-positive IC50s for log scale
+
+  p2 <- ggplot(ic50_data, aes(x = ic50_recomputed)) +
+    geom_histogram(bins = 50, fill = col2, color = "white") +
+    scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+    labs(
+      title = "Distribution of IC50 Values",
+      x = "IC50 (Recomputed, log10 scale)",
+      y = "Count"
+    ) +
+    theme_minimal(base_size = 12)
+  print(p2)
+} else {
+  DT::datatable(
+    tibble(Message = "IC50 metric not found."),
+    options = list(dom = 't')
+  )
+}
+```
+
+### Dose-Response Curve Visualization
+
+### Interpretation Guide
+
+*   **Curve Shape:** Visualizing raw viability data at different doses allows us to inspect the quality of the dose-response relationship. We look for sigmoidal curves for sensitive lines and flat lines for resistant ones.
+*   **Data Source:** Raw data is manually extracted from the 'sensitivity' assay of the TreatmentResponseExperiment.
+
+```{r dose-response-curves, fig.height=8, fig.width=10}
+# Manually extract raw data from 'sensitivity' assay
+if ("sensitivity" %in% assayNames(treatment_response)) {
+  # Extract raw data for a subset to avoid memory issues
+  # Select top 2 drugs by number of experiments
+  top_drugs <- sens_profiles |>
+    count(treatmentid, sort = TRUE) |>
+    head(2) |>
+    pull(treatmentid)
+
+  if (length(top_drugs) > 0) {
+    # Subset the LongTable/TRE directly might be complex, so we extract and filter
+    raw_dt <- as_tibble(assay(treatment_response, "sensitivity"))
+
+    # Ensure column names are lowercase
+    colnames(raw_dt) <- tolower(colnames(raw_dt))
+
+    # Filter for top drugs and a few cell lines
+    plot_data <- raw_dt |>
+      filter(treatmentid %in% top_drugs) |>
+      filter(sampleid %in% head(unique(sampleid), 4)) # Take first 4 cell lines for each
+
+    if (
+      nrow(plot_data) > 0 &&
+        "dose" %in% colnames(plot_data) &&
+        "viability" %in% colnames(plot_data)
+    ) {
+      ggplot(plot_data, aes(x = dose, y = viability, color = sampleid)) +
+        geom_point() +
+        geom_line() +
+        facet_wrap(~treatmentid, scales = "free_x") +
+        scale_x_log10() +
+        labs(
+          title = "Raw Dose-Response Curves (Sample)",
+          x = "Dose (log10)",
+          y = "Viability (%)"
+        ) +
+        theme_minimal(base_size = 12)
+    } else {
+      DT::datatable(
+        tibble(
+          Message = "Raw data missing required columns (dose, viability) or is empty."
+        ),
+        options = list(dom = 't')
+      )
+    }
+  } else {
+    DT::datatable(
+      tibble(Message = "No drugs found to plot."),
+      options = list(dom = 't')
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(
+      Message = "'sensitivity' assay (raw data) not found in TreatmentResponseExperiment. Cannot plot raw curves."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+### Replicate Concordance
+
+### Interpretation Guide
+
+*   **Reproducibility:** Assessing concordance between biological replicates is crucial. High correlation indicates robust experimental data.
+*   **Limitation:** Replicate information is typically stored in `sensitivityInfo`. If replicates are merged or not explicitly annotated in the `sens_profiles` derived from the `profiles` assay, this check might be limited.
+
+```{r replicate-concordance, fig.height=5}
+# Check for replicate information in sensitivityInfo
+sens_info <- PharmacoGx::sensitivityInfo(pset)
+
+# If 'replicateid' exists, we can try to link it back to our extracted profiles
+if ("replicateid" %in% names(sens_info)) {
+  # We need to map row keys from sens_profiles to replicate IDs
+  # This assumes sens_profiles has keys that map to sens_info rows
+  # Since we extracted sens_profiles from the assay, it likely uses (treatmentid, sampleid) as keys
+  # If there are multiple experiments for the same (treatmentid, sampleid), the LongTable handles them.
+
+  # For this specific object structure where we pulled from 'profiles' assay,
+  # let's check if we have duplicate (treatmentid, sampleid) pairs which would imply replicates
+
+  reps <- sens_profiles |>
+    group_by(treatmentid, sampleid) |>
+    filter(n() > 1) |>
+    mutate(rep_num = row_number()) |>
+    ungroup()
+
+  if (nrow(reps) > 0) {
+    # Pivot to wide format for correlation
+    rep_wide <- reps |>
+      select(treatmentid, sampleid, rep_num, aac_recomputed) |>
+      pivot_wider(
+        names_from = rep_num,
+        values_from = aac_recomputed,
+        names_prefix = "rep"
+      ) |>
+      filter(!is.na(rep1) & !is.na(rep2))
+
+    if (nrow(rep_wide) > 10) {
+      correlation <- cor(
+        rep_wide$rep1,
+        rep_wide$rep2,
+        use = "pairwise.complete.obs"
+      )
+
+      ggplot(rep_wide, aes(x = rep1, y = rep2)) +
+        geom_point(alpha = 0.5, color = col3) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+        labs(
+          title = paste0(
+            "Replicate Concordance (AAC), Pearson r = ",
+            round(correlation, 3)
+          ),
+          x = "Replicate 1 AAC",
+          y = "Replicate 2 AAC"
+        ) +
+        theme_minimal(base_size = 12)
+    } else {
+      DT::datatable(
+        tibble(
+          Message = "Insufficient replicate pairs found for robust correlation analysis."
+        ),
+        options = list(dom = 't')
+      )
+    }
+  } else {
+    DT::datatable(
+      tibble(
+        Message = "No replicates found in the extracted profiles (unique treatment-sample pairs)."
+      ),
+      options = list(dom = 't')
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(
+      Message = "No 'replicateid' column found in sensitivity information; cannot assess replicate concordance."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+### Known Drug-Gene Interactions (Positive Controls)
+
+### Interpretation Guide
+
+*   **Validation:** Validating known drug-gene interactions increases confidence in the data.
+*   **Example:** *BRAF* mutations are known to confer sensitivity to BRAF inhibitors like Vemurafenib or PLX4720. We expect *BRAF*-mutant cell lines to have higher AAC (or lower IC50) for these drugs.
+
+```{r known-interactions, fig.height=5}
+# Requires mutation data
+mut_se_present <- FALSE
+mut_mat <- tryCatch(
+  SummarizedExperiment::assay(MultiAssayExperiment::experiments(assay_mae)[[
+    "mut.genes"
+  ]]),
+  error = function(e) {
+    return(NULL)
+  }
+)
+
+if (!is.null(mut_mat)) {
+  mut_se_present <- TRUE
+}
+
+target_drug <- "PLX4720" # Common BRAF inhibitor in CCLE
+if (!target_drug %in% sens_profiles$treatmentid) {
+  target_drug <- "Vemurafenib"
+}
+
+if (
+  mut_se_present &&
+    target_drug %in% sens_profiles$treatmentid &&
+    "BRAF" %in% rownames(mut_mat)
+) {
+  # Get BRAF mutation status
+  # mut_mat often has "wt" or "0" for wildtype. Let's inspect or assume non-zero/non-wt is mutated.
+  # CCLE mut matrices are often character.
+  braf_status <- tibble(
+    sampleid = colnames(mut_mat),
+    mutation_call = mut_mat["BRAF", ]
+  ) |>
+    mutate(
+      is_mutated = !(is.na(mutation_call) |
+        mutation_call == "wt" |
+        mutation_call == "0" |
+        mutation_call == "")
+    )
+
+  # Get Drug Sensitivity
+  drug_sens <- sens_profiles |>
+    filter(treatmentid == target_drug) |>
+    select(sampleid, aac_recomputed)
+
+  # Merge
+  plot_df <- inner_join(braf_status, drug_sens, by = "sampleid") |>
+    filter(!is.na(aac_recomputed))
+
+  if (nrow(plot_df) > 5) {
+    ggplot(
+      plot_df,
+      aes(x = is_mutated, y = aac_recomputed, fill = is_mutated)
+    ) +
+      geom_boxplot(outlier.alpha = 0.2) +
+      geom_jitter(width = 0.2, alpha = 0.3) +
+      labs(
+        title = paste0(target_drug, " Sensitivity by BRAF Mutation Status"),
+        x = "BRAF Mutated",
+        y = "AAC (Recomputed)"
+      ) +
+      scale_fill_manual(values = c("FALSE" = col3, "TRUE" = col4)) +
+      theme_minimal(base_size = 12)
+
+    # Statistical test
+    pval <- wilcox.test(aac_recomputed ~ is_mutated, data = plot_df)$p.value
+    print(paste0("Wilcoxon p-value: ", format.pval(pval)))
+  } else {
+    DT::datatable(
+      tibble(
+        Message = "Insufficient overlap between BRAF mutation data and drug sensitivity data."
+      ),
+      options = list(dom = 't')
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(
+      Message = "Required data (Mutation matrix, BRAF gene, or target drug) not found."
+    ),
+    options = list(dom = 't')
+  )
+}
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

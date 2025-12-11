@@ -27,6 +27,8 @@ suppressPackageStartupMessages({
   library(org.Hs.eg.db)
 })
 
+source(file.path("workflow", "scripts", "utils", "uniprot_mapping.R"))
+
 `%||%` <- function(x, y) {
   if (!is.null(x)) x else y
 }
@@ -379,6 +381,56 @@ setcolorder(
     "alias_source",
     "mapping_strategies",
     "n_mapped_genes"
+  )
+)
+
+feature_metadata[
+  ,
+  gene_symbol_primary := canonical_gene_symbol(gene_symbol)
+]
+
+uniprot_map <- map_uniprot_symbols(feature_metadata$gene_symbol_primary)
+
+feature_metadata[
+  ,
+  `:=`(
+    uniprot_accession = uniprot_map[
+      gene_symbol_primary,
+      on = "gene_symbol",
+      uniprot_accession
+    ],
+    uniprot_entry = uniprot_map[
+      gene_symbol_primary,
+      on = "gene_symbol",
+      uniprot_entry
+    ],
+    uniprot_protein_name = uniprot_map[
+      gene_symbol_primary,
+      on = "gene_symbol",
+      uniprot_protein_name
+    ]
+  )
+]
+
+setcolorder(
+  feature_metadata,
+  c(
+    "feature_id",
+    "clean_id",
+    "base_id",
+    "target_hint",
+    "is_phospho",
+    "phosphorylation_site",
+    "gene_symbol",
+    "gene_symbol_primary",
+    "gene_name",
+    "entrez_id",
+    "alias_source",
+    "mapping_strategies",
+    "n_mapped_genes",
+    "uniprot_accession",
+    "uniprot_entry",
+    "uniprot_protein_name"
   )
 )
 

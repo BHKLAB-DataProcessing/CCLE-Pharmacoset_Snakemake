@@ -1,6 +1,8 @@
 # pipelines and environments
 .pixi
 .snakemake
+.uvcache
+**/__pycache__
 
 # data
 rawdata

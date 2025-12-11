@@ -1,0 +1,515 @@
+---
+title: "CCLE Metabolomics Quality Control"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook drafts QC diagnostics for the CCLE metabolomics (LC-MS) assay described in *The landscape of cancer cell line metabolism* (s41591-019-0404-8). It mirrors the publication’s exploratory figures where feasible (sample lineage composition, lineage-driven variance, and metabolite–genetic associations) and adds routine QC checks for missingness, batch effects, and distributional outliers.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(CoreGx)
+  library(PharmacoGx)
+  library(MultiAssayExperiment)
+  library(SummarizedExperiment)
+  library(tidyverse)
+  library(scales)
+  library(here)
+  library(matrixStats)
+  library(pheatmap)
+  library(DT) # Added for interactive tables
+})
+
+source(here::here("qc", "qc_palette.R"))
+
+col_missing_sample <- palette_classic[3]
+col_missing_feature <- palette_classic[4]
+col_intensity <- palette_classic[6]
+
+fraction_missing <- function(mat) mean(is.na(mat))
+sample_missingness <- function(mat) colMeans(is.na(mat))
+feature_missingness <- function(mat) rowMeans(is.na(mat))
+
+trim_range <- function(x, probs = c(0.05, 0.95)) {
+  rng <- quantile(x, probs, na.rm = TRUE)
+  if (any(is.na(rng)) || any(is.infinite(rng))) {
+    rng <- range(x, na.rm = TRUE)
+  }
+  rng
+}
+
+t_stat_val <- function(x, y) {
+  if (length(x) < 3 || length(y) < 3) {
+    return(NA_real_)
+  }
+  res <- try(stats::t.test(x, y), silent = TRUE)
+  if (inherits(res, "try-error")) {
+    return(NA_real_)
+  }
+  unname(res$statistic)
+}
+```
+
+## Data Access
+
+### Interpretation Guide
+
+*   **Missingness (Important!):** Metabolomics data rarely has 0% missingness. If `missing_fraction` is 0, it means the data has been imputed upstream. This should be explicitly noted and, ideally, the imputation method and its impact on the data distribution should be discussed.
+
+```{r data-access}
+project_root <- here::here()
+knitr::opts_knit$set(root.dir = project_root)
+
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet file not found: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+assay_mae <- PharmacoGx::molecularProfiles(pset)
+metab <- MultiAssayExperiment::experiments(assay_mae)[["metabolomics.lcms"]]
+
+feature_meta <- as_tibble(
+  SummarizedExperiment::rowData(metab),
+  rownames = "feature_id"
+)
+
+coldata_df <- as.data.frame(SummarizedExperiment::colData(metab))
+coldata_df <- coldata_df[, !duplicated(names(coldata_df)), drop = FALSE]
+coldata_df <- coldata_df[, setdiff(names(coldata_df), "sampleid"), drop = FALSE]
+sample_meta <- as_tibble(coldata_df, rownames = "sampleid")
+cell_meta <- CoreGx::cellInfo(pset) |>
+  as_tibble() |>
+  select(
+    sampleid,
+    CCLE.site_Primary,
+    CCLE.histology,
+    CCLE.depMapID,
+    cellosaurus.cellLineName
+  ) |>
+  mutate(sampleid = as.character(sampleid))
+
+assay_mat <- SummarizedExperiment::assay(metab, "exprs")
+
+metab_overview <- tibble(
+  samples = ncol(assay_mat),
+  features = nrow(assay_mat),
+  missing_fraction = fraction_missing(assay_mat)
+)
+DT::datatable(
+  metab_overview,
+  colnames = c("Samples", "Features", "Missing Fraction"),
+  caption = "Metabolomics assay overview.",
+  options = list(dom = 't')
+)
+```
+
+## Exploratory Data Analysis
+
+### Lineage composition (Fig. 1a analogue)
+
+### Interpretation Guide
+
+*   **Diversity:** A broad distribution of tissue types indicates a diverse cohort, which is good for generalizability. A highly skewed distribution might suggest biases.
+*   **Counts:** Shows the number of cell lines from each tissue type, providing context for downstream tissue-specific analyses.
+
+```{r lineage-composition, fig.height=5}
+lineage_counts <- sample_meta |>
+  left_join(cell_meta, by = "sampleid") |>
+  mutate(tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified")) |>
+  count(tissue, sort = TRUE)
+
+ggplot(lineage_counts, aes(x = "", y = n, fill = tissue)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = tissue_palette(lineage_counts$tissue)) +
+  labs(
+    title = "Lineage composition of metabolomics cohort",
+    x = NULL,
+    y = NULL
+  ) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+### Missingness and dynamic range
+
+### Interpretation Guide
+
+*   **0% Missingness:** As noted, `missing_fraction = 0` is unusual for raw metabolomics data. This likely indicates that missing values have been imputed upstream. While convenient, imputation can mask underlying data quality issues or introduce biases. Ideally, the imputation method (e.g., KNN, mean, minimum value) should be specified, and the distribution of imputed values should be visualized separately to ensure they do not distort the overall data landscape.
+*   **Histograms:** These plots show the distribution of missing values if any were present. For imputed data, they would typically show 0% missingness for all samples/features.
+
+```{r missingness, fig.height=4.5}
+sample_miss <- sample_missingness(assay_mat)
+feature_miss <- feature_missingness(assay_mat)
+
+ggplot(
+  tibble(sampleid = names(sample_miss), missing = sample_miss),
+  aes(x = missing)
+) +
+  geom_histogram(bins = 40, fill = col_missing_sample, color = "white") +
+  scale_x_continuous(labels = percent) +
+  labs(
+    title = "Sample-level missingness",
+    x = "Fraction missing",
+    y = "Samples"
+  )
+```
+
+```{r feature-missing, fig.height=4.5}
+ggplot(
+  tibble(feature = names(feature_miss), missing = feature_miss),
+  aes(x = missing)
+) +
+  geom_histogram(bins = 40, fill = col_missing_feature, color = "white") +
+  scale_x_continuous(labels = percent) +
+  labs(
+    title = "Feature-level missingness",
+    x = "Fraction missing",
+    y = "Metabolites"
+  )
+```
+
+### Intensity distribution
+
+### Interpretation Guide
+
+*   **Shape:** The overall shape of the density plot should be unimodal and relatively smooth. Multiple peaks or extreme skewness might suggest technical artifacts or uncorrected batch effects. Given the previous note about imputation, the distribution may also reflect the imputed values.
+*   **Range:** The x-axis shows the relative abundance. A wide dynamic range is desirable, indicating the assay can detect both low and high abundance metabolites.
+
+```{r intensity-distribution, fig.height=4.5}
+vals <- as.numeric(assay_mat)
+vals <- vals[!is.na(vals)]
+if (length(vals) > 200000) {
+  vals <- sample(vals, 200000)
+}
+
+ggplot(tibble(intensity = vals), aes(x = intensity)) +
+  geom_density(fill = col_intensity, alpha = 0.3) +
+  labs(
+    title = "Distribution of metabolite intensities",
+    x = "Relative abundance",
+    y = "Density"
+  )
+```
+
+### Batch effects and sample spread
+
+### Interpretation Guide
+
+*   **Batch Effects:** If a `batchid` column is present in the metadata, this plot visualizes the mean intensity per batch. Ideally, batch distributions should overlap, indicating no strong batch-specific biases. Distinct clusters or shifts between batches may suggest technical variation that needs correction.
+*   **Internal Standards (if available):** If internal standards are present in the dataset, their coefficients of variation (CVs) should be consistently low across all samples and batches, as they are used to control for technical variability. High CVs for internal standards would indicate issues with the experimental run or normalization.
+
+```{r batch-check, fig.height=4.5}
+if ("batchid" %in% names(sample_meta)) {
+  batch_df <- sample_meta |>
+    mutate(batchid = as.factor(batchid)) |>
+    select(sampleid, batchid)
+
+  sample_means <- colMeans(assay_mat, na.rm = TRUE)
+  batch_df$mean_intensity <- sample_means[batch_df$sampleid]
+
+  ggplot(batch_df, aes(x = batchid, y = mean_intensity, fill = batchid)) +
+    geom_boxplot(outlier.alpha = 0.2) +
+    scale_fill_manual(values = fill_palette(length(unique(batch_df$batchid)))) +
+    labs(
+      title = "Mean intensity by batch",
+      x = "Batch",
+      y = "Mean metabolite abundance"
+    ) +
+    theme(legend.position = "none")
+} else {
+  knitr::asis_output(
+    "*No 'batchid' column found in sample metadata; skipping batch effect analysis.*"
+  )
+}
+
+# Check for internal standards and plot their CVs if found
+internal_std_col <- grep(
+  "internal_standard|istd|IS",
+  names(feature_meta),
+  ignore.case = TRUE,
+  value = TRUE
+)
+if (length(internal_std_col) > 0) {
+  internal_standards <- feature_meta |>
+    filter(!!sym(internal_std_col[1]) == TRUE)
+  if (nrow(internal_standards) > 0) {
+    is_mat <- assay_mat[internal_standards$feature_id, , drop = FALSE]
+    is_cv <- matrixStats::rowSds(is_mat, na.rm = TRUE) /
+      matrixStats::rowMeans2(is_mat, na.rm = TRUE) *
+      100
+    is_cv_df <- tibble(feature_id = names(is_cv), cv = is_cv)
+
+    ggplot(is_cv_df, aes(x = reorder(feature_id, cv), y = cv)) +
+      geom_col(fill = fill_palette(nrow(is_cv_df))[1]) +
+      coord_flip() +
+      labs(
+        title = "Coefficient of Variation for Internal Standards",
+        x = "Internal Standard",
+        y = "CV (%)
+"
+      ) +
+      theme_minimal(base_size = 12)
+  } else {
+    knitr::asis_output(
+      "*No internal standards identified in feature metadata based on column name patterns.*"
+    )
+  }
+} else {
+  knitr::asis_output(
+    "*No 'internal_standard', 'istd', or 'IS' column found in feature metadata; skipping internal standard QC.*"
+  )
+}
+
+```
+
+### PCA on metabolites
+
+### Interpretation Guide
+
+*   **Clustering:** Samples from similar biological origins (e.g., tissue types) should cluster together. This indicates that biological variability is the primary driver of the data, rather than technical artifacts.
+*   **Outliers:** Isolated points far from clusters may represent outlier samples with unusual metabolic profiles, which could be biological or technical.
+*   **Explained Variance:** While not explicitly plotted here, the first few principal components (PC1, PC2) should ideally explain a substantial portion of the total variance, indicating meaningful underlying patterns.
+
+```{r pca, fig.height=5}
+mat <- assay_mat
+mat <- mat[apply(mat, 1, function(x) mean(!is.na(x)) > 0.9), ]
+mat <- t(scale(t(mat), center = TRUE, scale = TRUE))
+mat[is.na(mat)] <- 0
+pca <- prcomp(t(mat), scale. = FALSE)
+pca_df <- as_tibble(pca$x[, 1:2], rownames = "sampleid") |>
+  left_join(sample_meta, by = "sampleid") |>
+  left_join(cell_meta, by = "sampleid") |>
+  mutate(tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified"))
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = tissue)) +
+  geom_point(alpha = 0.8, size = 1.8) +
+  scale_color_manual(values = tissue_palette(pca_df$tissue)) +
+  labs(title = "PCA of metabolite profiles", color = "Tissue") +
+  theme(legend.position = "none")
+```
+
+## Publication-analogue Analyses (Fig. 1)
+
+### Mutation–metabolite associations (Fig. 1c/d style)
+
+### Interpretation Guide
+
+*   **Heatmap:** This heatmap visualizes t-statistics quantifying the association between gene mutations and metabolite levels. Strong positive (red) or negative (blue) associations for a given metabolite-gene pair are biologically meaningful.
+*   **Known Associations:** Look for patterns that align with known metabolic pathways or drug resistance mechanisms involving these genes.
+*   **`knitr::asis_output`:** If no genes meet the mutation frequency cutoff, a message will be displayed.
+
+```{r mutation-associations, fig.height=5}
+mut_mat <- tryCatch(
+  SummarizedExperiment::assay(MultiAssayExperiment::experiments(assay_mae)[[
+    "mut.genes"
+  ]]),
+  error = function(e) NULL
+)
+
+if (is.null(mut_mat)) {
+  DT::datatable(
+    tibble(
+      Message = "Mutation matrix not available; skipping mutation–metabolite associations."
+    ),
+    options = list(dom = 't')
+  )
+} else {
+  mut_mat <- as.matrix(mut_mat)
+  storage.mode(mut_mat) <- "numeric"
+  mut_bin <- mut_mat
+  mut_bin[!is.na(mut_bin)] <- as.numeric(mut_bin[!is.na(mut_bin)] != 0)
+  common_samples <- intersect(colnames(mut_bin), colnames(assay_mat))
+  mut_bin <- mut_bin[, common_samples, drop = FALSE]
+  metab_common <- assay_mat[, common_samples, drop = FALSE]
+
+  mutated_genes <- rowSums(mut_bin, na.rm = TRUE)
+  mutated_genes <- names(mutated_genes[mutated_genes >= 15])
+  if (!length(mutated_genes)) {
+    DT::datatable(
+      tibble(
+        Message = "No genes met mutation frequency cutoff; skipping mutation–metabolite associations."
+      ),
+      options = list(dom = 't')
+    )
+  } else {
+    assoc_list <- purrr::map_df(mutated_genes, function(g) {
+      status <- mut_bin[g, ]
+      idx_mut <- which(status == 1)
+      idx_wt <- which(status == 0)
+      tibble(
+        gene = g,
+        feature = rownames(metab_common),
+        t_value = apply(metab_common, 1, function(x) {
+          t_stat_val(x[idx_mut], x[idx_wt])
+        })
+      )
+    })
+
+    assoc_wide <- assoc_list |>
+      mutate(t_value = ifelse(is.na(t_value), 0, t_value)) |>
+      pivot_wider(names_from = gene, values_from = t_value)
+
+    mat_assoc <- as.matrix(assoc_wide[, -1, drop = FALSE])
+    rownames(mat_assoc) <- assoc_wide$feature
+
+    # Limit size for heatmap
+    top_feats <- head(
+      order(rowMeans(abs(mat_assoc), na.rm = TRUE), decreasing = TRUE),
+      60
+    )
+    top_genes <- head(
+      order(
+        colMeans(abs(mat_assoc[top_feats, , drop = FALSE]), na.rm = TRUE),
+        decreasing = TRUE
+      ),
+      20
+    )
+
+    pheatmap(
+      mat_assoc[top_feats, top_genes, drop = FALSE],
+      color = colorRampPalette(c("#08306B", "white", "#7F0000"))(201),
+      cluster_rows = TRUE,
+      cluster_cols = TRUE,
+      main = "Mutation–metabolite associations (t-stat)"
+    )
+  }
+}
+```
+
+### CN–metabolite associations (Fig. 1f/g style)
+
+### Interpretation Guide
+
+*   **Heatmap:** This heatmap displays Pearson correlations between gene copy number variations (CNVs) and metabolite levels. High absolute correlation values (red for positive, blue for negative) suggest potential genetic regulation of metabolic pathways.
+*   **Copy Number Impact:** CNVs can alter gene dosage, affecting protein expression and, consequently, metabolite production or consumption. This plot helps identify metabolites whose levels are strongly influenced by gene copy number.
+*   **`knitr::asis_output`:** If no CNV matrix is available, a message will be displayed.
+
+```{r cn-associations, fig.height=5}
+cn_mat <- tryCatch(
+  SummarizedExperiment::assay(MultiAssayExperiment::experiments(assay_mae)[[
+    "cnv.genes"
+  ]]),
+  error = function(e) NULL
+)
+
+if (is.null(cn_mat)) {
+  DT::datatable(
+    tibble(
+      Message = "Copy-number matrix not available; skipping CN–metabolite associations."
+    ),
+    options = list(dom = 't')
+  )
+} else {
+  cn_mat <- as.matrix(cn_mat)
+  storage.mode(cn_mat) <- "numeric"
+  common_samples <- intersect(colnames(cn_mat), colnames(assay_mat))
+  cn_mat <- cn_mat[, common_samples, drop = FALSE]
+  metab_common <- assay_mat[, common_samples, drop = FALSE]
+
+  cn_sd <- matrixStats::rowSds(cn_mat, na.rm = TRUE)
+  var_genes <- names(sort(cn_sd, decreasing = TRUE))[1:50]
+
+  assoc_list <- purrr::map_df(var_genes, function(g) {
+    cn_vec <- cn_mat[g, ]
+    tibble(
+      gene = g,
+      feature = rownames(metab_common),
+      cor = apply(metab_common, 1, function(x) {
+        cor(x, cn_vec, use = "complete.obs")
+      })
+    )
+  })
+
+  assoc_wide <- assoc_list |>
+    mutate(cor = replace_na(cor, 0)) |>
+    pivot_wider(names_from = gene, values_from = cor)
+
+  mat_assoc <- as.matrix(assoc_wide[, -1, drop = FALSE])
+  rownames(mat_assoc) <- assoc_wide$feature
+
+  top_feats <- head(
+    order(rowMeans(abs(mat_assoc), na.rm = TRUE), decreasing = TRUE),
+    60
+  )
+  top_genes <- head(
+    order(
+      colMeans(abs(mat_assoc[top_feats, , drop = FALSE]), na.rm = TRUE),
+      decreasing = TRUE
+    ),
+    20
+  )
+
+  pheatmap(
+    mat_assoc[top_feats, top_genes, drop = FALSE],
+    color = colorRampPalette(c("#08306B", "white", "#7F0000"))(201),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    main = "CN–metabolite correlations"
+  )
+}
+```
+
+### Lineage effects on metabolite levels (Extended Data Fig. 1b–c analogue)
+
+### Interpretation Guide
+
+*   **R-squared Distribution:** This histogram shows the distribution of adjusted R-squared values from linear models, where metabolite levels are predicted by tissue lineage. High R-squared values indicate that a significant portion of a metabolite's variability can be explained by the tissue type, highlighting lineage-specific metabolic patterns.
+*   **Biological Heterogeneity:** Different tissues have distinct metabolic requirements and activities. This plot confirms that the metabolomics data captures this expected biological heterogeneity.
+
+```{r lineage-effects, fig.height=5}
+lineage_df <- sample_meta |>
+  left_join(cell_meta, by = "sampleid") |>
+  mutate(tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified"))
+
+common_samples <- intersect(colnames(assay_mat), lineage_df$sampleid)
+lineage_df <- lineage_df |> filter(sampleid %in% common_samples)
+mat_lineage <- assay_mat[, common_samples, drop = FALSE]
+
+lineage_levels <- lineage_df$tissue
+
+lin_r2 <- apply(mat_lineage, 1, function(x) {
+  df <- tibble(val = x, tissue = lineage_levels)
+  df <- df[!is.na(df$val) & !is.na(df$tissue), ]
+  if (n_distinct(df$tissue) < 2) {
+    return(NA_real_)
+  }
+  fit <- lm(val ~ tissue, data = df)
+  summary(fit)$adj.r.squared
+})
+
+lin_df <- tibble(
+  feature = rownames(mat_lineage),
+  r2 = lin_r2
+) |>
+  filter(!is.na(r2)) |>
+  arrange(desc(r2))
+
+ggplot(lin_df, aes(x = r2)) +
+  geom_histogram(bins = 40, fill = palette_classic[4], color = "white") +
+  labs(
+    title = "Lineage-explained variance of metabolite levels",
+    x = "Adjusted R^2 (tissue as predictor)",
+    y = "Metabolite count"
+  )
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

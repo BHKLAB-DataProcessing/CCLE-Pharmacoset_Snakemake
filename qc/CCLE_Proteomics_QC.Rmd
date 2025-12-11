@@ -1,0 +1,1818 @@
+---
+title: "CCLE Proteomics Quality Control"
+author: "Michael Tran"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+This notebook consolidates the quality control (QC) diagnostics for the CCLE proteomic assays curated in the PharmacoSet, spanning both the Gygi TMT mass spectrometry release and the TCPA RPPA500 panel. It reproduces the previously published QC checks, adds side-by-side summaries, and extends the analysis with additional diagnostics frequently requested by collaborating laboratories. The emphasis is on practical indicators that external researchers can use to rapidly assess assay depth, missingness, variance structure, and replicate consistency.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+
+suppressPackageStartupMessages({
+  library(PharmacoGx)
+  library(SummarizedExperiment)
+  library(tidyverse)
+  library(scales)
+  library(here)
+  library(matrixStats)
+  library(pheatmap)
+  library(patchwork)
+  library(paletteer)
+  library(grid)
+  library(DT)
+})
+
+source(here::here("qc", "qc_palette.R"))
+
+col_mass_tissue_bar <- palette_classic[1]
+col_mass_plex <- palette_classic[2]
+col_mass_missing_sample <- palette_classic[3]
+col_mass_missing_feature <- palette_classic[4]
+col_mass_cv <- palette_classic[5]
+col_mass_hist <- palette_classic[6]
+col_mass_hist_trim <- palette_classic[7]
+col_mass_dynamic <- palette_classic[8]
+col_mass_corr_hist <- palette_classic[9]
+col_mass_spearman_hist <- palette_classic[10]
+col_rppa_tissue_bar <- palette_classic[11]
+col_rppa_hist <- palette_classic[12]
+col_rppa_hist_trim <- palette_classic[13]
+col_rppa_dynamic <- palette_classic[14]
+col_rppa_cv <- palette_classic[15]
+col_rppa_corr_hist <- palette_classic[16]
+col_diag_line <- palette_classic[17]
+
+corr_colors <- colorRampPalette(c("#08306B", "#ffffff", "#7F0000"))(201)
+heatmap_breaks <- seq(-1, 1, length.out = length(corr_colors) + 1)
+gradient_density <- as.character(paletteer::paletteer_c("scico::roma", 100))
+```
+
+## Data Review
+
+```{r data-access}
+project_root <- here::here()
+knitr::opts_knit$set(root.dir = project_root)
+
+pset_path <- file.path(project_root, "results", "CCLE_PharmacoSet.RDS")
+if (!file.exists(pset_path)) {
+  stop("PharmacoSet file not found: ", pset_path)
+}
+
+pset <- readRDS(pset_path)
+pset
+assay_list <- molecularProfiles(pset)
+
+mass_spec <- assay_list[["proteomics.massspec"]]
+rppa <- assay_list[["proteomics.rppa"]]
+rna_tpm <- assay_list[["rnaseq.genes_tpm"]]
+
+if (is.null(mass_spec) || is.null(rppa)) {
+  stop(
+    "Expected proteomics assays (mass spec and RPPA) were not found in the PharmacoSet."
+  )
+}
+
+cell_meta <- cellInfo(pset) |>
+  as_tibble(rownames = "cellid")
+
+mass_spec_sample_meta <- SummarizedExperiment::colData(mass_spec) |>
+  as.data.frame() |>
+  as_tibble()
+
+if (!"sampleid" %in% names(mass_spec_sample_meta)) {
+  mass_spec_sample_meta <- mass_spec_sample_meta |>
+    mutate(sampleid = rownames(SummarizedExperiment::colData(mass_spec)))
+}
+
+mass_spec_sample_meta <- mass_spec_sample_meta |>
+  mutate(
+    dataset_sample_id = coalesce(dataset_sample_id, sampleid),
+    sampleid = as.character(sampleid)
+  )
+
+mass_spec_feature_meta <- SummarizedExperiment::rowData(mass_spec) |>
+  as.data.frame() |>
+  as_tibble()
+
+if (!"feature_id" %in% names(mass_spec_feature_meta)) {
+  mass_spec_feature_meta <- mass_spec_feature_meta |>
+    mutate(feature_id = rownames(SummarizedExperiment::rowData(mass_spec)))
+}
+
+tenplex_cols <- mass_spec_feature_meta |>
+  select(starts_with("TenPx")) |>
+  colnames()
+
+mass_spec_feature_meta <- mass_spec_feature_meta |>
+  mutate(
+    total_peptides = if (length(tenplex_cols) > 0) {
+      rowSums(across(all_of(tenplex_cols)), na.rm = TRUE)
+    } else {
+      NA_real_
+    }
+  )
+
+rppa_sample_meta <- SummarizedExperiment::colData(rppa) |>
+  as.data.frame() |>
+  as_tibble()
+
+if (!"sampleid" %in% names(rppa_sample_meta)) {
+  rppa_sample_meta <- rppa_sample_meta |>
+    mutate(sampleid = rownames(SummarizedExperiment::colData(rppa)))
+}
+
+rppa_sample_meta <- rppa_sample_meta |>
+  mutate(
+    dataset_sample_id = coalesce(dataset_sample_id, sampleid),
+    sampleid = as.character(sampleid)
+  )
+
+if (is.null(tissue_color_map) || !length(tissue_color_map)) {
+  ms_tissue_all <- as.character(mass_spec_sample_meta$tissue)
+  ms_tissue_all <- ifelse(
+    is.na(ms_tissue_all) | ms_tissue_all == "", "unspecified", ms_tissue_all
+  )
+  rppa_tissue_all <- as.character(rppa_sample_meta$tissue)
+  rppa_tissue_all <- ifelse(
+    is.na(rppa_tissue_all) | rppa_tissue_all == "", "unspecified", rppa_tissue_all
+  )
+  combined_tissues <- c(ms_tissue_all, rppa_tissue_all)
+  combined_tissues <- combined_tissues[!is.na(combined_tissues)]
+  tissue_levels_consistent <- sort(unique(combined_tissues))
+  tissue_color_map <- setNames(
+    rep(palette_extended, length.out = length(tissue_levels_consistent)),
+    tissue_levels_consistent
+  )
+}
+
+rppa_feature_meta <- SummarizedExperiment::rowData(rppa) |>
+  as.data.frame() |>
+  as_tibble()
+
+if (!"feature_id" %in% names(rppa_feature_meta)) {
+  rppa_feature_meta <- rppa_feature_meta |>
+    mutate(feature_id = rownames(SummarizedExperiment::rowData(rppa)))
+}
+
+mass_spec_exprs <- SummarizedExperiment::assay(mass_spec, "exprs")
+rppa_exprs <- SummarizedExperiment::assay(rppa, "exprs")
+
+assay_overview <- tibble(
+  assay = names(assay_list),
+  features = purrr::map_int(assay_list, nrow),
+  samples = purrr::map_int(assay_list, ncol)
+) |>
+  arrange(desc(features))
+
+DT::datatable(
+  assay_overview,
+  colnames = c("Assay", "Features", "Samples"),
+  caption = "Available molecular assays in the CCLE PharmacoSet.",
+  options = list(dom = 't')
+)
+```
+
+## Mass Spectrometry Quality Control
+
+### Sample Alignment and Context
+
+### Interpretation Guide
+
+This section verifies that the proteomic profiles are correctly linked to cell line identifiers.
+*   **Dataset Mismatch:** Should be 0. Non-zero indicates potential sample swaps or naming errors.
+*   **DepMap Missing:** Should be 0. Indicates samples that cannot be linked to the Broad DepMap metadata.
+*   **Multi-measurement:** Indicates cell lines with biological replicates. These are usually averaged in the final profile.
+
+```{r massspec-sample-alignment}
+mass_spec_samples <- mass_spec_sample_meta |>
+  mutate(across(everything(), as.character)) |>
+  select(
+    sampleid,
+    depmap_id,
+    cell_line,
+    tissue,
+    dataset_sample_id,
+    n_measurements,
+    plex_id
+  ) |>
+  left_join(
+    cell_meta |>
+      select(cellid, CCLE.sampleid, CCLE.name, CCLE.site_Primary, CCLE.type),
+    by = c("sampleid" = "cellid")
+  ) |>
+  mutate(
+    ccle_sampleid = coalesce(CCLE.sampleid, sampleid),
+    dataset_match = if_else(
+      is.na(dataset_sample_id) | is.na(ccle_sampleid),
+      FALSE,
+      str_detect(dataset_sample_id, fixed(ccle_sampleid))
+    ),
+    tissue = if_else(is.na(tissue) | tissue == "", "unspecified", tissue)
+  )
+
+alignment_summary <- mass_spec_samples |>
+  summarise(
+    samples = n(),
+    depmap_missing = sum(is.na(depmap_id)),
+    dataset_mismatch = sum(!dataset_match),
+    multi_measurement = sum(as.integer(n_measurements) > 1)
+  )
+
+DT::datatable(
+  alignment_summary,
+  caption = "Mass spectrometry sample alignment diagnostics.",
+  options = list(dom = 't')
+)
+```
+
+All 374 proteomic profiles resolved to CCLE samples and to DepMap identifiers following curation. Three records retain multiple Gygi measurements (`multi_measurement`), reflecting biological replicates that were averaged (mean) into the final profile while keeping provenance in the metadata.
+
+```{r massspec-tissue, fig.height=6}
+tissue_counts <- mass_spec_samples |>
+  count(tissue, name = "n") |>
+  arrange(desc(n)) |>
+  mutate(share = n / sum(n))
+
+tissue_cols_mass_bar <- tissue_palette(tissue_counts$tissue)
+
+ggplot(tissue_counts, aes(x = reorder(tissue, n), y = n, fill = tissue)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(
+    title = "Mass spectrometry sample composition by tissue",
+    x = "Tissue",
+    y = "Samples"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  scale_fill_manual(values = tissue_cols_mass_bar, na.translate = TRUE) +
+  theme_minimal(base_size = 12)
+```
+
+### Quantification Depth
+
+### Interpretation Guide
+
+*   **Protein Groups:** Higher is better. Typical deep TMT datasets range from 8k-12k proteins.
+*   **Peptides:** Median peptides > 2 indicates robust identification. Single-peptide identifications are less reliable.
+
+```{r massspec-depth}
+protein_group_count <- nrow(mass_spec_exprs)
+peptide_summary <- mass_spec_feature_meta |>
+  summarise(
+    proteins_with_peptides = sum(!is.na(total_peptides) & total_peptides > 0),
+    median_peptides = median(total_peptides, na.rm = TRUE),
+    q1_peptides = quantile(total_peptides, probs = 0.25, na.rm = TRUE),
+    q3_peptides = quantile(total_peptides, probs = 0.75, na.rm = TRUE)
+  )
+
+depth_summary <- tibble(
+  metric = c(
+    "Protein groups quantified",
+    "Entries supported by ≥1 peptide",
+    "Median peptides per protein",
+    "Peptide IQR (Q1–Q3)"
+  ),
+  value = c(
+    as.character(protein_group_count),
+    as.character(peptide_summary$proteins_with_peptides),
+    as.character(round(peptide_summary$median_peptides, 1)),
+    paste(
+      round(peptide_summary$q1_peptides, 1),
+      round(peptide_summary$q3_peptides, 1),
+      sep = " – "
+    )
+  )
+)
+
+DT::datatable(
+  depth_summary,
+  colnames = c("Metric", "Value"),
+  caption = "Mass spectrometry quantification depth.",
+  options = list(dom = 't')
+)
+```
+
+The Gygi release quantifies 12,755 protein groups. Peptide support is high (median ~40 peptides per protein group), aligning with expectations for deep TMT profiling of cell line digests.
+
+```{r massspec-tenplex, fig.height=8}
+plex_summary <- mass_spec_samples |>
+  mutate(
+    plex_id = if_else(is.na(plex_id) | plex_id == "", "unspecified", plex_id),
+    n_measurements = as.integer(n_measurements)
+  ) |>
+  count(plex_id, name = "samples") |>
+  arrange(desc(samples))
+
+max_samples_per_plex <- max(plex_summary$samples, na.rm = TRUE)
+
+ggplot(plex_summary, aes(x = reorder(plex_id, samples), y = samples)) +
+  geom_col(fill = col_mass_plex) +
+  coord_flip() +
+  labs(
+    title = "Ten-plex composition",
+    x = "TMT plex",
+    y = "Samples"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 10),
+    breaks = seq(0, 10, by = 2),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+The last three TMT plex labels correspond to the merged measurements; otherwise, all plexes would have 9 count (ten channels with one for reference = nine) except TenPx07. Likely experimental inconsistency, not an issue.
+
+```{r massspec-replicate-summary}
+mass_spec_samples |>
+  count(n_measurements, name = "samples") |>
+  arrange(as.integer(n_measurements)) |>
+  DT::datatable(
+    colnames = c("Merged Gygi measurements", "Samples"),
+    caption = "Number of Gygi quantifications contributing to each CCLE profile.",
+    options = list(dom = 't')
+  )
+```
+
+The tally confirms that exactly three CCLE profiles were built from two Gygi measurements each; all remaining 371 profiles aggregate a single quantification run.
+
+### Missing Data Profile
+
+### Interpretation Guide
+
+*   **Sample Missingness:** Should be consistent across samples within a batch. Spikes indicate failed injections or poor digestion.
+*   **Plex Missingness:** TMT plexes often share missingness patterns. Systematic high missingness in one plex suggests a technical issue with that specific run.
+*   **Imputation:** This dataset contains `NA` values. Downstream analyses (e.g., PCA) typically require imputation (e.g., KNN or min-prob).
+
+The missing value survey highlights whether particular plexes or samples require imputation or exclusion before downstream modeling.
+
+```{r massspec-missingness, fig.height=5, fig.width=7}
+if (!exists("compute_missingness")) {
+  compute_missingness <- function(mat) {
+    sample_missing <- colMeans(is.na(mat)) * 100
+    feature_missing <- rowMeans(is.na(mat)) * 100
+    list(
+      sample = tibble(
+        sampleid = names(sample_missing),
+        missing_pct = unname(sample_missing)
+      ),
+      feature = tibble(
+        feature_id = rownames(mat),
+        missing_pct = feature_missing
+      ),
+      dataset = tibble(
+        missing_pct = mean(is.na(mat)) * 100
+      )
+    )
+  }
+}
+
+ms_missing <- compute_missingness(mass_spec_exprs)
+sample_missing_meta <- ms_missing$sample |>
+  left_join(mass_spec_samples, by = "sampleid") |>
+  mutate(
+    plex_id = if_else(is.na(plex_id) | plex_id == "", "unspecified", plex_id)
+  )
+sample_missing_meta_expanded <- sample_missing_meta |>
+  tidyr::separate_rows(plex_id, sep = "\\|")
+
+sample_hist <- hist(
+  ms_missing$sample$missing_pct,
+  breaks = seq(0, 100, length.out = 31),
+  plot = FALSE
+)
+sample_y_max <- max(sample_hist$counts, 1)
+
+sample_missing_plot <- sample_missing_meta |>
+  ggplot(aes(x = missing_pct)) +
+  geom_histogram(
+    fill = col_mass_missing_sample,
+    color = "white",
+    bins = 30,
+    boundary = 0,
+    closed = "left"
+  ) +
+  labs(
+    title = "Mass spec: per-sample missing values",
+    x = "Missing values (%)",
+    y = "Samples"
+  ) +
+  scale_x_continuous(limits = c(0, 100), expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(
+    limits = c(0, sample_y_max),
+    expand = expansion(mult = c(0, 0.05)),
+    labels = scales::number_format(accuracy = 1)
+  ) +
+  theme_minimal(base_size = 12)
+
+print(sample_missing_plot)
+
+plex_missing_plot <- sample_missing_meta_expanded |>
+  mutate(
+    plex_id = forcats::fct_reorder(
+      plex_id,
+      missing_pct,
+      .fun = median,
+      .desc = TRUE
+    )
+  ) |>
+  ggplot(aes(x = plex_id, y = missing_pct)) +
+  geom_boxplot(
+    fill = col_mass_missing_sample,
+    color = "white",
+    outlier.alpha = 0.25
+  ) +
+  coord_flip() +
+  labs(
+    title = "Per-plex distribution of sample missingness",
+    x = "TMT plex",
+    y = "Sample missing values (%)"
+  ) +
+  theme_minimal(base_size = 12)
+
+print(plex_missing_plot)
+
+plex_missing_summary <- sample_missing_meta_expanded |>
+  group_by(plex_id) |>
+  summarise(
+    samples = n(),
+    missing_pct = round(first(missing_pct), 2),
+    distinct_missing = dplyr::n_distinct(round(missing_pct, 4)),
+    .groups = "drop"
+  ) |>
+  arrange(desc(missing_pct), desc(samples))
+
+if (any(plex_missing_summary$distinct_missing > 1)) {
+  warning("Detected plexes with heterogeneous missingness values.")
+}
+
+plex_missing_summary <- plex_missing_summary |>
+  select(-distinct_missing)
+
+DT::datatable(
+  plex_missing_summary,
+  colnames = c("Plex", "Samples", "Missing (%)"),
+  caption = "Per-plex sample missingness summary (all TMT batches; counts expanded for replicated runs).",
+  options = list(pageLength = 10, scrollX = TRUE)
+)
+
+feature_hist <- hist(
+  ms_missing$feature$missing_pct,
+  breaks = seq(0, 100, length.out = 31),
+  plot = FALSE
+)
+feature_y_max <- max(feature_hist$counts, 1)
+
+feature_missing_plot <- ms_missing$feature |>
+  ggplot(aes(x = missing_pct)) +
+  geom_histogram(
+    fill = col_mass_missing_feature,
+    color = "white",
+    bins = 30,
+    boundary = 0,
+    closed = "left"
+  ) +
+  labs(
+    title = "Mass spec: per-protein missing values",
+    x = "Missing values (%)",
+    y = "Protein groups"
+  ) +
+  scale_x_continuous(limits = c(0, 100), expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(
+    limits = c(0, feature_y_max),
+    expand = expansion(mult = c(0, 0.05)),
+    labels = scales::number_format(accuracy = 1)
+  ) +
+  theme_minimal(base_size = 12)
+
+print(feature_missing_plot)
+```
+
+Entire TMT plexes share identical missingness because each multiplexed run experiences the same loading, digestion, and acquisition depth. After expanding the few multi-plex labels (e.g., `02|28`) back to their constituent runs, nearly every plex reports nine CCLE lanes (one channel remains the pooled bridge) and all samples within that plex converge to the same missing percentage. Plex 10, 41, and 39 sit at the top of the table because those specific batches were slightly shallower, so the sparse signals show up as a plex-level effect rather than isolated sample failures.
+
+### Variability Within Tissue Cohorts
+
+### Interpretation Guide
+
+*   **Coefficient of Variation (CV):** Measures relative variability within biological groups (tissues).
+*   **Expectation:** Median CV < 20% indicates good technical reproducibility and reasonably tight biological clusters.
+*   **Outliers:** Long tails in the CV distribution often correspond to low-abundance proteins where the signal-to-noise ratio is poor.
+
+```{r massspec-cv, fig.height=5}
+if (!exists("compute_cv_by_group")) {
+  compute_cv_by_group <- function(
+    mat,
+    groups,
+    min_group_size = 3,
+    feature_missing_cutoff = 0.5
+  ) {
+    if (!is.matrix(mat)) {
+      mat <- as.matrix(mat)
+    }
+    valid_features <- rowMeans(is.na(mat)) <= feature_missing_cutoff
+    mat <- mat[valid_features, , drop = FALSE]
+    groups <- as.character(groups)
+    valid_levels <- names(which(table(groups) >= min_group_size))
+    purrr::map_dfr(
+      valid_levels,
+      function(level) {
+        idx <- which(groups == level)
+        sub_mat <- mat[, idx, drop = FALSE]
+        if (ncol(sub_mat) < min_group_size) {
+          return(NULL)
+        }
+        retain <- rowMeans(is.na(sub_mat)) <= feature_missing_cutoff
+        sub_mat <- sub_mat[retain, , drop = FALSE]
+        if (!nrow(sub_mat)) {
+          return(NULL)
+        }
+        linear_values <- 2^sub_mat
+        row_means <- matrixStats::rowMeans2(linear_values, na.rm = TRUE)
+        row_sds <- matrixStats::rowSds(linear_values, na.rm = TRUE)
+        cv <- (row_sds / (row_means + 1e-6)) * 100
+        tibble(
+          tissue = level,
+          feature_id = rownames(sub_mat),
+          cv = cv
+        )
+      }
+    )
+  }
+}
+
+mass_spec_cv <- compute_cv_by_group(
+  mass_spec_exprs,
+  groups = mass_spec_samples$tissue,
+  min_group_size = 3,
+  feature_missing_cutoff = 0.5
+)
+
+if (nrow(mass_spec_cv)) {
+  cv_summary <- mass_spec_cv |>
+    group_by(tissue) |>
+    summarise(
+      median_cv = median(cv, na.rm = TRUE),
+      iqr_cv = IQR(cv, na.rm = TRUE),
+      features = n()
+    ) |>
+    arrange(desc(median_cv)) |>
+    mutate(
+      median_cv = round(median_cv, 2),
+      iqr_cv = round(iqr_cv, 2)
+    )
+
+  DT::datatable(
+    cv_summary,
+    colnames = c("Tissue", "Median CV (%)", "IQR", "Features"),
+    caption = "Coefficient of variation across tissues (mass spec; computed on 2^intensity scale).",
+    options = list(pageLength = 10, scrollX = TRUE)
+  )
+
+  cv_boxplot_df <- mass_spec_cv |>
+    mutate(
+      tissue = fct_reorder(tissue, cv, .fun = median, .desc = TRUE)
+    )
+
+  cv_boxplot_cols <- tissue_palette(cv_boxplot_df$tissue)
+
+  cv_boxplot_df |>
+    ggplot(aes(x = tissue, y = cv, fill = tissue)) +
+    geom_boxplot(outlier.alpha = 0.1, show.legend = FALSE) +
+    coord_flip() +
+    labs(
+      title = "Mass spec CV distribution by tissue",
+      x = "Tissue (≥3 samples)",
+      y = "Coefficient of variation (%)"
+    ) +
+    scale_fill_manual(values = cv_boxplot_cols, na.translate = TRUE) +
+    theme_minimal(base_size = 12)
+}
+```
+
+The tissue CV analysis computes the coefficient of variation (standard deviation divided by mean, on the linear 2^intensity scale) for each protein within each tissue cohort.
+
+Tissue-specific median CVs cluster below 20%, consistent with the expectation for well-controlled TMT workflows. Hematopoietic lineages show modestly higher dispersion, matching the increased phenotypic heterogeneity noted in the Gygi manuscript.
+
+The CV boxplot uses ggplot’s default Tukey rule: the box spans the interquartile range (25th–75th percentile), whiskers extend to the furthest points within 1.5×IQR of the quartiles, and any sample whose CV falls beyond those whiskers is drawn as an outlier point. The long CV outlier tails stem from proteins whose mean abundance is near zero; even minor absolute fluctuations yield disproportionately high CV% once the denominator collapses. These usually represent low-signal proteins rather than true instability.
+
+```{r massspec-cv-ridge, fig.height=6, fig.width=8}
+if (nrow(mass_spec_cv)) {
+  if (!requireNamespace("ggridges", quietly = TRUE)) {
+    stop("Package 'ggridges' is required for ridge density plots.")
+  }
+
+  cv_ridge_df <- mass_spec_cv |>
+    mutate(
+      tissue = fct_reorder(tissue, cv, .fun = median, .desc = TRUE)
+    )
+
+  cv_ridge_cols <- tissue_palette(cv_ridge_df$tissue)
+
+  cv_ridge_df |>
+    ggplot(aes(x = cv, y = tissue, fill = tissue)) +
+    ggridges::geom_density_ridges(
+      quantile_lines = TRUE,
+      quantiles = 2,
+      alpha = 0.8,
+      color = NA,
+      scale = 1.05
+    ) +
+    labs(
+      title = "Mass spec CV densities by tissue",
+      x = "Coefficient of variation (%)",
+      y = NULL
+    ) +
+    scale_fill_manual(values = cv_ridge_cols, guide = "none") +
+    theme_minimal(base_size = 12)
+}
+```
+
+Ridge plot for supplemental visualization.
+
+### Intensity Distribution and Dynamic Range
+
+### Interpretation Guide
+
+*   **Intensity Distribution:** Should be roughly symmetric and centered (e.g., at 0 for log-ratios or normalized data). Skew or multi-modality might indicate batch effects.
+*   **Dynamic Range:** Rank-abundance curves should show a smooth decay. Sudden drops usually indicate limits of detection.
+
+These plots confirm whether proteomic quantification remains centered and whether the assay retains the expected dynamic range across the CCLE diversity.
+
+```{r massspec-intensity-hist, fig.height=5}
+sample_medians <- tibble(
+  sampleid = colnames(mass_spec_exprs),
+  median_expr = matrixStats::colMedians(mass_spec_exprs, na.rm = TRUE),
+  intensity_iqr = matrixStats::colIQRs(mass_spec_exprs, na.rm = TRUE)
+) |>
+  left_join(mass_spec_samples, by = "sampleid")
+
+intensity_hist <- mass_spec_exprs |>
+  as.vector() |>
+  tibble(intensity = _) |>
+  filter(!is.na(intensity)) |>
+  ggplot(aes(x = intensity)) +
+  geom_histogram(fill = col_mass_hist, color = "white", bins = 80) +
+  labs(
+    title = "Distribution of log2 intensities (mass spec)",
+    x = "log2 intensity",
+    y = "Observations"
+  ) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1)) +
+  theme_minimal(base_size = 12)
+
+print(intensity_hist)
+```
+
+The full-distribution view shows that a handful of measurements sit outside the core [-5, 5] range, stretching the x-axis well beyond where the vast majority of intensities lie.
+
+```{r massspec-intensity-hist-trimmed, fig.height=5}
+clean_mass_spec <- mass_spec_exprs
+mass_spec_out_mask <- clean_mass_spec < -5 | clean_mass_spec > 5
+mass_spec_total_vals <- length(clean_mass_spec)
+mass_spec_out_count <- sum(mass_spec_out_mask, na.rm = TRUE)
+mass_spec_out_pct <- (mass_spec_out_count / mass_spec_total_vals) * 100
+cat(sprintf(
+  "Mass spec intensities outside [-5,5]: %d of %d (%.4f%%)\n",
+  mass_spec_out_count,
+  mass_spec_total_vals,
+  mass_spec_out_pct
+))
+
+clean_mass_spec[mass_spec_out_mask] <- NA
+
+clean_intensity_hist <- clean_mass_spec |>
+  as.vector() |>
+  tibble(intensity = _) |>
+  filter(!is.na(intensity)) |>
+  ggplot(aes(x = intensity)) +
+  geom_histogram(fill = col_mass_hist_trim, color = "white", bins = 80) +
+  labs(
+    title = "Mass spec log2 intensities ([-5, 5] censored)",
+    x = "log2 intensity",
+    y = "Observations"
+  ) +
+  coord_cartesian(xlim = c(-5, 5)) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1)) +
+  theme_minimal(base_size = 12)
+
+print(clean_intensity_hist)
+```
+
+Once the tails are clipped to [-5, 5], the histogram is tightly centered near 0 with no visible skew.
+
+```{r massspec-dynamic-range, fig.height=5}
+if (!exists("summarize_dynamic_range")) {
+  summarize_dynamic_range <- function(mat) {
+    feature_medians <- matrixStats::rowMedians(mat, na.rm = TRUE)
+    tibble(
+      feature_id = rownames(mat),
+      median_intensity = feature_medians
+    ) |>
+      arrange(desc(median_intensity)) |>
+      mutate(rank = row_number())
+  }
+}
+
+mass_spec_dynamic <- summarize_dynamic_range(mass_spec_exprs)
+
+ggplot(mass_spec_dynamic, aes(x = rank, y = median_intensity)) +
+  geom_line(color = col_mass_dynamic) +
+  labs(
+    title = "Mass spec protein rank-abundance curve",
+    x = "Rank (most to least abundant)",
+    y = "Median log2 intensity"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+The curve shows three regimes: a small set of highly abundant proteins, a mid-range plateau, and a tail dropoff only at the detection limit. That indicates the assay maintains depth across most protein ranks and only compresses at the very low end—exactly what we expect from well-normalized TMT data.
+
+```{r massspec-sample-medians-plot, fig.height=25, fig.width=6}
+tissue_cols_mass <- tissue_palette(sample_medians$tissue)
+
+sample_medians |>
+  arrange(median_expr) |>
+  mutate(sampleid = factor(sampleid, levels = sampleid)) |>
+  ggplot(aes(x = sampleid, y = median_expr, fill = tissue)) +
+  geom_col(width = 0.6) +
+  coord_flip() +
+  labs(
+    title = "Sample medians coloured by tissue",
+    x = "Sample",
+    y = "Median log2 intensity"
+  ) +
+  scale_fill_manual(values = tissue_cols_mass, na.translate = TRUE) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 5),
+    axis.text.x = element_text(size = 9),
+    plot.margin = margin(5, 12, 5, 5)
+  )
+```
+
+Notably, hematopoietic profiles dominate the lower tail of this plot with their sample medians cluster around -0.4 to -0.6 log2, reflecting the consistently lower overall signal in immune-derived lines. Kidney and upper aerodigestive cohorts also sit below the global center, whereas large intestine, endometrium, and some CNS lines anchor the upper end (≈0.1 log2). The spread is still narrow (5th–95th percentiles span roughly -0.3 to 0.07), so these shifts capture subtle but reproducible tissue-specific baselines rather than dramatic normalization failures.
+
+### Reproducibility and Cross-Modality Checks
+
+### Interpretation Guide
+
+*   **Correlation Heatmap:** Should show positive correlation among biological replicates (if any) and biologically similar tissues.
+*   **PCA:** Clustering should be driven by biology (Tissue), not batch (Plex).
+*   **RNA-Protein Concordance:** Spearman rho ~0.3-0.5 is expected. Zero or negative correlation would be alarming.
+
+The correlation heatmap and associated PCA provide complementary views on replicate agreement and potential batch effects.
+```{r massspec-reproducibility, fig.height=7, fig.width=7}
+if (!exists("median_impute")) {
+  median_impute <- function(mat) {
+    if (!is.matrix(mat)) {
+      mat <- as.matrix(mat)
+    }
+    imputed <- mat
+    row_medians <- matrixStats::rowMedians(mat, na.rm = TRUE)
+    row_medians[is.na(row_medians) | is.infinite(row_medians)] <- 0
+    na_idx <- which(is.na(mat), arr.ind = TRUE)
+    if (nrow(na_idx)) {
+      imputed[na_idx] <- row_medians[na_idx[, 1]]
+    }
+    imputed
+  }
+}
+
+if (!exists("prepare_correlation")) {
+  prepare_correlation <- function(
+    mat,
+    sample_meta,
+    missing_threshold = 0.25
+  ) {
+    if (!is.matrix(mat)) {
+      mat <- as.matrix(mat)
+    }
+    keep_features <- rowMeans(is.na(mat)) <= missing_threshold
+    mat <- mat[keep_features, , drop = FALSE]
+    mat <- median_impute(mat)
+    zero_var <- matrixStats::rowVars(mat) > 0
+    mat <- mat[zero_var, , drop = FALSE]
+    if (nrow(mat) == 0) {
+      return(NULL)
+    }
+    corr_mat <- cor(mat, method = "pearson")
+    corr_df <- as.data.frame(corr_mat) |>
+      tibble::rownames_to_column("sampleid") |>
+      pivot_longer(
+        cols = -sampleid,
+        names_to = "sampleid_b",
+        values_to = "correlation"
+      )
+
+    annotated <- sample_meta |>
+      select(sampleid, tissue) |>
+      mutate(
+        tissue = if_else(is.na(tissue) | tissue == "", "unspecified", tissue)
+      )
+
+    corr_df |>
+      left_join(annotated, by = "sampleid") |>
+      left_join(
+        annotated,
+        by = c("sampleid_b" = "sampleid"),
+        suffix = c("_a", "_b")
+      )
+  }
+}
+
+mass_spec_cor_df <- prepare_correlation(
+  mass_spec_exprs,
+  mass_spec_samples,
+  missing_threshold = 0.25
+)
+
+if (!is.null(mass_spec_cor_df)) {
+  cor_heatmap_mat <- mass_spec_cor_df |>
+    pivot_wider(
+      id_cols = sampleid,
+      names_from = sampleid_b,
+      values_from = correlation
+    ) |>
+    column_to_rownames("sampleid") |>
+    as.matrix()
+
+  ordered_samples <- colnames(cor_heatmap_mat)
+  annotation_df <- mass_spec_samples |>
+    mutate(
+      plex_id = if_else(is.na(plex_id) | plex_id == "", "unspecified", plex_id)
+    ) |>
+    filter(sampleid %in% ordered_samples) |>
+    distinct(sampleid, .keep_all = TRUE) |>
+    arrange(match(sampleid, ordered_samples)) |>
+    select(sampleid, tissue, plex_id) |>
+    column_to_rownames("sampleid")
+
+  tissue_levels <- sort(unique(annotation_df$tissue))
+  plex_levels <- sort(unique(annotation_df$plex_id))
+  annotation_df$tissue <- factor(annotation_df$tissue, levels = tissue_levels)
+  annotation_df$plex_id <- factor(annotation_df$plex_id, levels = plex_levels)
+  tissue_colors <- tissue_palette(annotation_df$tissue)
+  plex_colors <- setNames(
+    rep(palette_extended, length.out = length(plex_levels)),
+    plex_levels
+  )
+  annotation_colors <- list(
+    tissue = tissue_colors,
+    plex_id = plex_colors
+  )
+
+  pheatmap::pheatmap(
+    cor_heatmap_mat,
+    color = corr_colors,
+    breaks = heatmap_breaks,
+    show_colnames = FALSE,
+    show_rownames = FALSE,
+    annotation_col = annotation_df,
+    annotation_row = annotation_df,
+    annotation_colors = annotation_colors,
+    legend = TRUE,
+    annotation_legend = FALSE,
+    border_color = NA,
+    clustering_method = "complete",
+    main = "Sample-wise Pearson correlations (mass spec)",
+    silent = FALSE
+  )
+}
+```
+
+This is a symmetric sample–sample self-correlation matrix (each cell is the Pearson correlation between two CCLE proteomic profiles; red diagonal is 1.0 self-correlation). Consistent with the earlier plots, hematopoietic and lymphoid lines cluster tightly both in the dendrogram and as a high-correlation block, while no plex-driven blocks are evident—pointing to biology, not batch, as the dominant structure.
+
+```{r massspec-correlation-distribution, fig.height=5}
+if (!is.null(mass_spec_cor_df)) {
+  mass_spec_cor_df |>
+    filter(sampleid != sampleid_b) |>
+    ggplot(aes(x = correlation)) +
+    geom_histogram(fill = col_mass_corr_hist, color = "white", bins = 40) +
+    labs(
+      title = "Distribution of sample-wise correlations (mass spec)",
+      x = "Pearson correlation",
+      y = "Pairs"
+    ) +
+    theme_minimal(base_size = 12)
+}
+```
+
+Most pairwise correlations sit around zero, reflecting the expected lack of similarity between unrelated tissues. A minute right skew corresponds to biologically similar samples.
+
+```{r massspec-pca, fig.height=6, fig.width=8}
+if (!exists("generate_pca")) {
+  generate_pca <- function(mat, sample_meta, missing_threshold = 0.25) {
+    if (!is.matrix(mat)) {
+      mat <- as.matrix(mat)
+    }
+    keep_features <- rowMeans(is.na(mat)) <= missing_threshold
+    mat <- mat[keep_features, , drop = FALSE]
+    mat <- median_impute(mat)
+    zero_var <- matrixStats::rowVars(mat) > 0
+    mat <- mat[zero_var, , drop = FALSE]
+    if (nrow(mat) == 0) {
+      return(NULL)
+    }
+    pca <- prcomp(t(mat), center = TRUE, scale. = FALSE)
+    scores <- as_tibble(pca$x) |>
+      mutate(sampleid = rownames(pca$x)) |>
+      left_join(sample_meta, by = "sampleid")
+    list(
+      scores = scores,
+      pca = pca
+    )
+  }
+}
+
+mass_spec_pca <- generate_pca(
+  mass_spec_exprs,
+  mass_spec_samples,
+  missing_threshold = 0.25
+)
+
+if (!is.null(mass_spec_pca)) {
+  expl_var <- (mass_spec_pca$pca$sdev^2) / sum(mass_spec_pca$pca$sdev^2)
+  var_labels <- paste0(
+    names(expl_var),
+    " (",
+    round(expl_var * 100, 1),
+    "%)"
+  )
+  legend_rows_ms <- ceiling(length(unique(mass_spec_samples$tissue)) / 6)
+  pca_tissue_cols <- tissue_palette(mass_spec_pca$scores$tissue)
+  mass_spec_pca$scores |>
+    ggplot(aes(x = PC1, y = PC2, color = tissue)) +
+    geom_point(alpha = 0.8, size = 2) +
+    labs(
+      title = "Mass spec PCA (features filtered to ≤25% missing)",
+      x = var_labels[1],
+      y = var_labels[2]
+    ) +
+    coord_equal() +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 7),
+      legend.box = "horizontal",
+      legend.margin = margin(t = 4, b = 4)
+    ) +
+    scale_color_manual(values = pca_tissue_cols, na.translate = TRUE) +
+    guides(
+      color = guide_legend(
+        nrow = max(2, legend_rows_ms),
+        byrow = TRUE,
+        override.aes = list(size = 3, alpha = 1)
+      )
+    )
+}
+
+```
+
+Hematopoietic and lymphoid samples pull away from solid tumors along PC1, as expected, while the rest mix uniformly; so tissue drives the visible structure rather than technical factors.
+
+```{r massspec-pca-plex, fig.height=6, fig.width=8}
+if (!is.null(mass_spec_pca)) {
+  legend_rows_plex <- ceiling(length(unique(mass_spec_samples$plex_id)) / 6)
+  plex_ids <- sort(unique(if_else(
+    is.na(mass_spec_samples$plex_id) | mass_spec_samples$plex_id == "",
+    "unspecified",
+    mass_spec_samples$plex_id
+  )))
+  plex_colors <- setNames(
+    rep(palette_extended, length.out = length(plex_ids)),
+    plex_ids
+  )
+
+  mass_spec_pca$scores |>
+    mutate(
+      plex_id = if_else(is.na(plex_id) | plex_id == "", "unspecified", plex_id)
+    ) |>
+    ggplot(aes(x = PC1, y = PC2, color = plex_id)) +
+    geom_point(alpha = 0.8, size = 2) +
+    labs(
+      title = "Mass spec PCA coloured by TMT plex",
+      x = var_labels[1],
+      y = var_labels[2]
+    ) +
+    coord_equal() +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 7),
+      legend.box = "horizontal",
+      legend.margin = margin(t = 4, b = 4)
+    ) +
+    scale_color_manual(values = plex_colors, na.translate = TRUE) +
+    guides(
+      color = guide_legend(
+        nrow = max(2, legend_rows_plex),
+        byrow = TRUE,
+        override.aes = list(size = 3, alpha = 1)
+      )
+    )
+}
+```
+
+Coloring by plex shows no discernible structure.
+
+### RNA–Protein Concordance
+
+```{r massspec-rna-concordance, fig.height=5}
+if (!is.null(rna_tpm)) {
+  rna_expr <- SummarizedExperiment::assay(rna_tpm, "exprs")
+  rna_feature_meta <- SummarizedExperiment::rowData(rna_tpm) |>
+    as.data.frame() |>
+    as_tibble() |>
+    mutate(
+      gene_symbol = coalesce(
+        as.character(gene_name),
+        as.character(gene_id)
+      )
+    )
+
+  common_samples <- intersect(colnames(mass_spec_exprs), colnames(rna_expr))
+
+  if (length(common_samples) >= 10) {
+    mass_spec_common <- mass_spec_exprs[, common_samples, drop = FALSE]
+    rna_common <- rna_expr[, common_samples, drop = FALSE]
+
+    mass_spec_gene_map <- mass_spec_feature_meta |>
+      transmute(
+        feature_id = feature_id,
+        gene_symbol = str_trim(Gene_Symbol)
+      ) |>
+      filter(!is.na(gene_symbol) & gene_symbol != "")
+
+    mass_spec_gene_expr <- rowsum(
+      mass_spec_common[mass_spec_gene_map$feature_id, , drop = FALSE],
+      group = mass_spec_gene_map$gene_symbol,
+      reorder = FALSE
+    )
+
+    rna_gene_symbols <- str_trim(rna_feature_meta$gene_symbol)
+    valid_rna <- !is.na(rna_gene_symbols) & rna_gene_symbols != ""
+    rna_gene_expr <- rowsum(
+      rna_common[valid_rna, , drop = FALSE],
+      group = rna_gene_symbols[valid_rna],
+      reorder = FALSE
+    )
+
+    shared_genes <- intersect(
+      rownames(mass_spec_gene_expr),
+      rownames(rna_gene_expr)
+    )
+
+    if (length(shared_genes) >= 100) {
+      mass_spec_shared <- mass_spec_gene_expr[shared_genes, , drop = FALSE]
+      rna_shared <- rna_gene_expr[shared_genes, , drop = FALSE]
+
+      sample_ids <- colnames(mass_spec_shared)
+      sample_cor <- purrr::map_dbl(
+        sample_ids,
+        ~ suppressWarnings(cor(
+          mass_spec_shared[, .x],
+          rna_shared[, .x],
+          method = "spearman",
+          use = "pairwise.complete.obs"
+        ))
+      )
+
+      spearman_summary <- summary(sample_cor)
+
+      DT::datatable(
+        spearman_summary |>
+          enframe(name = "statistic", value = "value") |>
+          mutate(value = round(value, 3)),
+        colnames = c("Statistic", "Value"),
+        caption = "RNA–protein Spearman correlation summary.",
+        options = list(dom = 't')
+      )
+
+      tibble(
+        sampleid = sample_ids,
+        spearman = sample_cor
+      ) |>
+        left_join(mass_spec_samples, by = "sampleid") |>
+        ggplot(aes(x = spearman)) +
+        geom_histogram(
+          fill = col_mass_spearman_hist,
+          color = "white",
+          bins = 25
+        ) +
+        labs(
+          title = "Spearman correlation between RNA and protein abundance",
+          x = "Spearman rho",
+          y = "Samples"
+        ) +
+        theme_minimal(base_size = 12)
+    }
+  }
+}
+```
+
+RNA–protein concordance centers near 0.30 (IQR ≈ 0.25–0.35): solid evidence that the proteomics agree with matched transcriptomes, while the spread reminds us proteins still capture post-transcriptional biology beyond RNA. That magnitude is typical for CCLE’s cross-modality comparisons. Even though both assays profile the same lines, they come from distinct experimental pipelines and sources, so perfect alignment is not expected.
+
+## RPPA Quality Control
+
+### Sample Alignment and Context
+
+```{r rppa-sample-alignment}
+rppa_samples <- rppa_sample_meta |>
+  mutate(across(everything(), as.character)) |>
+  select(
+    sampleid,
+    depmap_id,
+    cell_line,
+    tissue,
+    dataset_sample_id,
+    batchid
+  ) |>
+  left_join(
+    cell_meta |>
+      select(cellid, CCLE.sampleid, CCLE.name, CCLE.site_Primary, CCLE.type),
+    by = c("sampleid" = "cellid")
+  ) |>
+  mutate(
+    ccle_sampleid = coalesce(CCLE.sampleid, sampleid),
+    dataset_match = dataset_sample_id == ccle_sampleid,
+    tissue = if_else(is.na(tissue) | tissue == "", "unspecified", tissue)
+  )
+
+rppa_alignment <- rppa_samples |>
+  summarise(
+    samples = n(),
+    depmap_missing = sum(is.na(depmap_id)),
+    dataset_mismatch = sum(!dataset_match)
+  )
+
+DT::datatable(
+  rppa_alignment,
+  caption = "RPPA sample alignment diagnostics.",
+  options = list(dom = 't')
+)
+```
+
+Only two TCPA identifiers diverge from CCLE naming conventions and are corrected during curation, yielding zero residual mismatches in the curated PharmacoSet.
+
+```{r rppa-mismatch}
+dataset_mismatches <- rppa_samples |>
+  filter(!dataset_match) |>
+  arrange(sampleid)
+
+if (nrow(dataset_mismatches) > 0) {
+  mismatch_long <- dataset_mismatches |>
+    select(
+      sampleid,
+      ccle_sampleid,
+      dataset_sample_id,
+      depmap_id,
+      cell_line,
+      tissue,
+      CCLE.name,
+      CCLE.site_Primary,
+      CCLE.type
+    ) |>
+    mutate(
+      sampleid = if_else(
+        is.na(sampleid) | sampleid == "",
+        dataset_sample_id,
+        sampleid
+      )
+    ) |>
+    pivot_longer(
+      cols = -sampleid,
+      names_to = "field",
+      values_to = "value"
+    ) |>
+    pivot_wider(
+      names_from = sampleid,
+      values_from = value
+    ) |>
+    arrange(field)
+
+  DT::datatable(
+    mismatch_long,
+    colnames = c("Metadata field", colnames(mismatch_long)[-1]),
+    caption = "Metadata for samples where the TCPA identifier differed from the CCLE sample identifier.",
+    options = list(scrollX = TRUE)
+  )
+}
+```
+
+The two discrepancies arise from TCPA exporting tissue-qualified identifiers that do not follow CCLE conventions (`KE97_STOMACH` instead of `KE97_HAEMATOPOIETIC_AND_LYMPHOID_TISSUE`, `NCIH684_LARGE_INTESTINE` instead of `NCIH684_LIVER`). During PharmacoSet curation we remap the TCPA identifiers to the canonical CCLE sample IDs shown in the `ccle_sampleid` column, ensuring downstream joins and QC reference the correct lines and tissues.
+
+```{r rppa-tissue, fig.height=6}
+rppa_tissue_counts <- rppa_samples |>
+  count(tissue, name = "n") |>
+  arrange(desc(n))
+
+rppa_tissue_cols_plot <- tissue_palette(rppa_tissue_counts$tissue)
+if ("unspecified" %in% names(rppa_tissue_cols_plot)) {
+  rppa_tissue_cols_plot["unspecified"] <- na_color
+}
+
+ggplot(rppa_tissue_counts, aes(x = reorder(tissue, n), y = n, fill = tissue)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(
+    title = "RPPA sample composition by tissue",
+    x = "Tissue",
+    y = "Samples"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  scale_fill_manual(values = rppa_tissue_cols_plot, na.translate = TRUE) +
+  theme_minimal(base_size = 12)
+```
+
+### Quantification Depth
+
+### Interpretation Guide
+
+*   **Antibodies:** RPPA covers a smaller, targeted set of proteins compared to mass spec (~450 vs 12k).
+*   **Phospho-proteins:** A key value of RPPA is the high proportion of modification-specific probes.
+
+```{r rppa-depth}
+rppa_depth <- tibble(
+  metric = c(
+    "Antibody probes quantified",
+    "Phosphoprotein probes",
+    "Protein probes"
+  ),
+  value = c(
+    nrow(rppa_exprs),
+    sum(rppa_feature_meta$is_phospho),
+    sum(!rppa_feature_meta$is_phospho)
+  )
+)
+
+DT::datatable(
+  rppa_depth,
+  colnames = c("Metric", "Value"),
+  caption = "RPPA quantification depth.",
+  options = list(dom = 't')
+)
+```
+
+```{r rppa-feature-annotation}
+rppa_feature_meta |>
+  mutate(
+    has_gene = !is.na(gene_symbol) & gene_symbol != "",
+    feature_class = if_else(is_phospho, "phosphoprotein", "protein"),
+    annotation = if_else(has_gene, "mapped", "unmapped")
+  ) |>
+  count(feature_class, annotation, name = "features") |>
+  DT::datatable(
+    colnames = c("Feature class", "Annotation", "Features"),
+    caption = "RPPA feature annotation summary.",
+    options = list(dom = 't')
+  )
+```
+
+We are able to map roughly two thirds of probes to known gene symbols using `org.Hs.eg.db` in the curation.
+
+### Missing Data Profile
+
+### Interpretation Guide
+
+*   **Expectation:** RPPA data is typically fully complete (0% missing). Any missingness usually indicates a processing error or excluded array.
+
+TCPA intensities are usually complete; the table confirms whether any antibodies or plates deviate from that expectation.
+
+```{r rppa-missingness}
+rppa_missing <- compute_missingness(rppa_exprs)
+
+rppa_missing_summary <- tibble(
+  metric = c(
+    "Sample-level max",
+    "Sample-level mean",
+    "Feature-level max",
+    "Feature-level mean",
+    "Overall dataset missingness"
+  ),
+  missing_pct = c(
+    max(rppa_missing$sample$missing_pct),
+    mean(rppa_missing$sample$missing_pct),
+    max(rppa_missing$feature$missing_pct),
+    mean(rppa_missing$feature$missing_pct),
+    rppa_missing$dataset$missing_pct
+  )
+) |>
+  mutate(missing_pct = round(missing_pct, 2))
+
+DT::datatable(
+  rppa_missing_summary,
+  colnames = c("Metric", "Missing (%)"),
+  caption = "RPPA missingness summary at the sample, feature, and dataset levels.",
+  options = list(dom = 't')
+)
+```
+
+All reported statistics evaluate to 0%; no missing data.
+
+### Variability Within Tissue Cohorts
+
+### Interpretation Guide
+
+*   **Median CV:** Should be low (<20%) for consistent quantification.
+*   **Outliers:** RPPA often has a few highly variable phosphoproteins depending on signaling state.
+
+```{r rppa-cv, fig.height=5}
+rppa_cv <- compute_cv_by_group(
+  rppa_exprs,
+  groups = rppa_samples$tissue,
+  min_group_size = 5,
+  feature_missing_cutoff = 0.5
+)
+
+if (nrow(rppa_cv)) {
+  rppa_cv_summary <- rppa_cv |>
+    group_by(tissue) |>
+    summarise(
+      median_cv = median(cv, na.rm = TRUE),
+      iqr_cv = IQR(cv, na.rm = TRUE),
+      features = n()
+    ) |>
+    arrange(desc(median_cv)) |>
+    mutate(
+      median_cv = round(median_cv, 2),
+      iqr_cv = round(iqr_cv, 2)
+    )
+
+  DT::datatable(
+    rppa_cv_summary,
+    colnames = c("Tissue", "Median CV (%)", "IQR", "Features"),
+    caption = "Coefficient of variation across tissues (RPPA; computed on 2^intensity scale).",
+    options = list(pageLength = 10, scrollX = TRUE)
+  )
+
+  rppa_cv_boxplot_df <- rppa_cv |>
+    mutate(
+      tissue = fct_reorder(tissue, cv, .fun = median, .desc = TRUE)
+    )
+
+  rppa_cv_boxplot_cols <- tissue_palette(rppa_cv_boxplot_df$tissue)
+
+  rppa_cv_boxplot_df |>
+    ggplot(aes(x = tissue, y = cv, fill = tissue)) +
+    geom_boxplot(outlier.alpha = 0.1, show.legend = FALSE) +
+    coord_flip() +
+    labs(
+      title = "RPPA CV distribution by tissue",
+      x = "Tissue (≥5 samples)",
+      y = "Coefficient of variation (%)"
+    ) +
+    scale_fill_manual(values = rppa_cv_boxplot_cols, na.translate = TRUE) +
+    theme_minimal(base_size = 12)
+}
+```
+
+RPPA tissues show median CVs clustered below ~18%, mirroring the mass-spec patterns and indicating stable antibody performance after normalization.
+
+The boxplot retains the same Tukey whisker rules described above: outliers beyond 1.5×IQR generally correspond to phospho-probes near the detection floor, where tiny absolute shifts lead to large percent fluctuations.
+
+```{r rppa-cv-ridge, fig.height=6, fig.width=8}
+if (nrow(rppa_cv)) {
+  if (!requireNamespace("ggridges", quietly = TRUE)) {
+    stop("Package 'ggridges' is required for ridge density plots.")
+  }
+
+  rppa_cv_ridge_df <- rppa_cv |>
+    mutate(
+      tissue = fct_reorder(tissue, cv, .fun = median, .desc = TRUE)
+    )
+
+  rppa_cv_ridge_cols <- tissue_palette(rppa_cv_ridge_df$tissue)
+
+  rppa_cv_ridge_df |>
+    ggplot(aes(x = cv, y = tissue, fill = tissue)) +
+    ggridges::geom_density_ridges(
+      quantile_lines = TRUE,
+      quantiles = 2,
+      alpha = 0.8,
+      color = NA,
+      scale = 1.05
+    ) +
+    labs(
+      title = "RPPA CV densities by tissue",
+      x = "Coefficient of variation (%)",
+      y = NULL
+    ) +
+    scale_fill_manual(values = rppa_cv_ridge_cols, guide = "none") +
+    theme_minimal(base_size = 12)
+}
+```
+
+Ridge densities provide the same trend, with insight into finer densities.
+
+### Intensity Distribution and Dynamic Range
+
+### Interpretation Guide
+
+*   **Distributions:** Like mass spec, RPPA data should be centered.
+*   **Rank Curve:** A distinct "S" shape is typical for antibody-based detection (saturation at high end, noise at low end).
+
+```{r rppa-intensity-hist, fig.height=5}
+rppa_sample_medians <- tibble(
+  sampleid = colnames(rppa_exprs),
+  median_expr = matrixStats::colMedians(rppa_exprs, na.rm = TRUE)
+) |>
+  left_join(rppa_samples, by = "sampleid")
+
+rppa_hist <- rppa_exprs |>
+  as.vector() |>
+  tibble(intensity = _) |>
+  filter(!is.na(intensity)) |>
+  ggplot(aes(x = intensity)) +
+  geom_histogram(fill = col_rppa_hist, color = "white", bins = 80) +
+  labs(
+    title = "Distribution of RPPA log2 intensities",
+    x = "log2 intensity",
+    y = "Observations"
+  ) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1)) +
+  theme_minimal(base_size = 12)
+
+print(rppa_hist)
+```
+
+The same long-range axis inflation happens here as with mass spec: a small number of probes sit just outside [-5, 5], making the main density look compressed.
+
+```{r rppa-intensity-hist-trimmed, fig.height=5}
+rppa_trimmed <- rppa_exprs
+rppa_out_mask <- rppa_trimmed < -5 | rppa_trimmed > 5
+rppa_total_vals <- length(rppa_trimmed)
+rppa_out_count <- sum(rppa_out_mask, na.rm = TRUE)
+rppa_out_pct <- (rppa_out_count / rppa_total_vals) * 100
+cat(sprintf(
+  "RPPA intensities outside [-5,5]: %d of %d (%.4f%%)\n",
+  rppa_out_count,
+  rppa_total_vals,
+  rppa_out_pct
+))
+
+rppa_trimmed[rppa_out_mask] <- NA
+
+rppa_hist_trimmed <- rppa_trimmed |>
+  as.vector() |>
+  tibble(intensity = _) |>
+  filter(!is.na(intensity)) |>
+  ggplot(aes(x = intensity)) +
+  geom_histogram(fill = col_rppa_hist_trim, color = "white", bins = 80) +
+  labs(
+    title = "RPPA log2 intensities ([-5, 5] censored)",
+    x = "log2 intensity",
+    y = "Observations"
+  ) +
+  coord_cartesian(xlim = c(-5, 5)) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1)) +
+  theme_minimal(base_size = 12)
+
+print(rppa_hist_trimmed)
+```
+
+The censored view confirms the RPPA intensities are also well centered around 0 with only negligible tails.
+
+```{r rppa-dynamic-range, fig.height=5}
+rppa_dynamic <- summarize_dynamic_range(rppa_exprs)
+
+ggplot(rppa_dynamic, aes(x = rank, y = median_intensity)) +
+  geom_line(color = col_rppa_dynamic) +
+  labs(
+    title = "RPPA rank-abundance curve",
+    x = "Rank (most to least abundant)",
+    y = "Median log2 intensity"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+The RPPA curve shows a gradual decay through roughly the top 100 probes, a flat shoulder from ranks ~100–400, and then a sharper drop toward the detection floor. That shape mirrors expectations for an antibody panel that mixes a few high-signal housekeeping targets with a large mid-level cohort and a short low-abundance tail. No abrupt cliffs that would hint at failed probes or normalization issues.
+
+```{r rppa-sample-medians-plot, fig.height=28, fig.width=6}
+rppa_tissue_cols <- tissue_palette(rppa_sample_medians$tissue)
+
+rppa_sample_medians |>
+  arrange(median_expr) |>
+  mutate(sampleid = factor(sampleid, levels = sampleid)) |>
+  ggplot(aes(x = sampleid, y = median_expr, fill = tissue)) +
+  geom_col(width = 0.5) +
+  coord_flip() +
+  labs(
+    title = "RPPA sample medians coloured by tissue",
+    x = "Sample",
+    y = "Median log2 intensity"
+  ) +
+  scale_fill_manual(values = rppa_tissue_cols, na.translate = TRUE) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 4),
+    axis.text.x = element_text(size = 9),
+    plot.margin = margin(5, 14, 5, 5)
+  )
+```
+
+RPPA sample medians span roughly -0.15 to 0.16 log2 overall (5th–95th percentiles ≈ -0.05 to 0.07). Autonomic ganglia, endometrium, and liver occupy the lower end of the plot, while urinary tract, breast, kidney, skin, and pleura cohorts sit slightly above zero. The narrow spread reinforces that global RPPA scaling is consistent across tissues, making it easy to spot any future batches that drift away from the central band.
+
+### Reproducibility and Cross-Modality Checks
+
+### Interpretation Guide
+
+*   **Correlation:** Positive correlations between RNA and Protein are a strong quality indicator.
+*   **Batch Effects:** PCA should group samples by tissue, not by TCPA batch (if batch info were available/dominant).
+
+```{r rppa-reproducibility, fig.height=7, fig.width=7}
+rppa_cor_df <- prepare_correlation(
+  rppa_exprs,
+  rppa_samples,
+  missing_threshold = 0.2
+)
+
+if (!is.null(rppa_cor_df)) {
+  cor_heatmap_mat <- rppa_cor_df |>
+    pivot_wider(
+      id_cols = sampleid,
+      names_from = sampleid_b,
+      values_from = correlation
+    ) |>
+    column_to_rownames("sampleid") |>
+    as.matrix()
+
+  ordered_samples <- colnames(cor_heatmap_mat)
+  annotation_df <- rppa_samples |>
+    mutate(
+      batchid = if_else(is.na(batchid) | batchid == "", "unspecified", batchid)
+    ) |>
+    filter(sampleid %in% ordered_samples) |>
+    distinct(sampleid, .keep_all = TRUE) |>
+    arrange(match(sampleid, ordered_samples)) |>
+    select(sampleid, tissue) |>
+    column_to_rownames("sampleid")
+
+  tissue_levels <- sort(unique(annotation_df$tissue))
+  annotation_df$tissue <- factor(annotation_df$tissue, levels = tissue_levels)
+  tissue_colors <- tissue_palette(annotation_df$tissue)
+  annotation_colors <- list(
+    tissue = tissue_colors
+  )
+
+  pheatmap::pheatmap(
+    cor_heatmap_mat,
+    color = corr_colors,
+    breaks = heatmap_breaks,
+    show_colnames = FALSE,
+    show_rownames = FALSE,
+    annotation_col = annotation_df,
+    annotation_row = annotation_df,
+    annotation_colors = annotation_colors,
+    legend = TRUE,
+    annotation_legend = FALSE,
+    border_color = NA,
+    clustering_method = "complete",
+    main = "Sample-wise Pearson correlations (RPPA)",
+    silent = FALSE
+  )
+}
+```
+
+The heatmap clusters pairwise sample correlations and overlays tissue annotations along both axes. The red diagonal represents sample self-correlation (all exactly 1), while the flanking blocks show tissues with shared signatures: hematopoietic/lymphoid, CNS, and skin lines each form tight clusters. Nearly every off-diagonal entry remains positive, reinforcing that RPPA profiles are broadly concordant across samples.
+
+```{r rppa-correlation-distribution, fig.height=5}
+if (!is.null(rppa_cor_df)) {
+  rppa_cor_summary <- rppa_cor_df |>
+    filter(sampleid != sampleid_b) |>
+    summarise(
+      min = min(correlation, na.rm = TRUE),
+      q1 = quantile(correlation, 0.25, na.rm = TRUE),
+      median = median(correlation, na.rm = TRUE),
+      mean = mean(correlation, na.rm = TRUE),
+      q3 = quantile(correlation, 0.75, na.rm = TRUE),
+      max = max(correlation, na.rm = TRUE)
+    ) |>
+    pivot_longer(everything(), names_to = "statistic", values_to = "value") |>
+    mutate(value = round(value, 3))
+
+  rppa_cor_df |>
+    filter(sampleid != sampleid_b) |>
+    ggplot(aes(x = correlation)) +
+    geom_histogram(fill = col_rppa_corr_hist, color = "white", bins = 40) +
+    labs(
+      title = "Distribution of sample-wise correlations (RPPA)",
+      x = "Pearson correlation",
+      y = "Pairs"
+    ) +
+    theme_minimal(base_size = 12)
+
+  DT::datatable(
+    rppa_cor_summary,
+    colnames = c("Statistic", "Value"),
+    caption = "Summary statistics for RPPA sample-wise correlations.",
+    options = list(dom = 't')
+  )
+}
+```
+
+The histogram traces a smooth, near-normal bell that leans slightly to the right but stays almost entirely above zero. That overall positive trend indicates RPPA profiles are broadly concordant, with only a thin tail of near-identical pairs pushing correlations toward one.
+
+```{r rppa-pca, fig.height=6, fig.width=8}
+rppa_pca <- generate_pca(
+  rppa_exprs,
+  rppa_samples,
+  missing_threshold = 0.2
+)
+
+if (!is.null(rppa_pca)) {
+  expl_var <- (rppa_pca$pca$sdev^2) / sum(rppa_pca$pca$sdev^2)
+  var_labels <- paste0(
+    names(expl_var),
+    " (",
+    round(expl_var * 100, 1),
+    "%)"
+  )
+  legend_rows_rppa <- ceiling(length(unique(rppa_samples$tissue)) / 6)
+  rppa_tissue_cols <- tissue_palette(rppa_pca$scores$tissue)
+  rppa_pca$scores |>
+    ggplot(aes(x = PC1, y = PC2, color = tissue)) +
+    geom_point(alpha = 0.8, size = 2) +
+    labs(
+      title = "RPPA PCA (features filtered to ≤20% missing)",
+      x = var_labels[1],
+      y = var_labels[2]
+    ) +
+    coord_equal() +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 7),
+      legend.box = "horizontal",
+      legend.margin = margin(t = 4, b = 4)
+    ) +
+    scale_color_manual(values = rppa_tissue_cols, na.translate = TRUE) +
+    guides(
+      color = guide_legend(
+        nrow = max(2, legend_rows_rppa),
+        byrow = TRUE,
+        override.aes = list(size = 3, alpha = 1)
+      )
+    )
+}
+```
+
+The PCA mirrors earlier plots: hematopoietic and lymphoid samples peel away from the epithelial core along the first two PCs.
+
+### RNA–Protein Concordance
+
+```{r rppa-rna-overlap}
+if (!is.null(rna_tpm)) {
+  rna_genes <- SummarizedExperiment::rowData(rna_tpm) |>
+    as.data.frame() |>
+    as_tibble() |>
+    transmute(
+      gene_symbol = coalesce(
+        as.character(gene_name),
+        as.character(gene_id)
+      )
+    )
+
+  rppa_overlap <- tibble(
+    feature_id = rppa_feature_meta$feature_id,
+    gene_symbol = coalesce(
+      rppa_feature_meta$gene_symbol,
+      rppa_feature_meta$clean_id
+    )
+  ) |>
+    filter(!is.na(gene_symbol) & gene_symbol != "") |>
+    mutate(in_rnaseq = gene_symbol %in% rna_genes$gene_symbol) |>
+    count(in_rnaseq, name = "genes") |>
+    mutate(
+      label = if_else(in_rnaseq, "present in RNA-seq", "absent from RNA-seq"),
+      proportion = round(genes / sum(genes), 3)
+    )
+
+  DT::datatable(
+    rppa_overlap,
+    colnames = c("In RNA-seq", "Genes", "Label", "Proportion"),
+    caption = "RNA-seq coverage for RPPA targets.",
+    options = list(dom = 't')
+  )
+}
+```
+
+About 61% of RPPA targets map to genes represented in the RNA-seq panel, so downstream RNA–protein comparisons cover the majority of antibodies while flagging the 39% of probes lacking matched transcripts.
+
+```{r rppa-rna-concordance, fig.height=5}
+if (!is.null(rna_tpm)) {
+  rna_expr <- SummarizedExperiment::assay(rna_tpm, "exprs")
+  rna_feature_meta <- SummarizedExperiment::rowData(rna_tpm) |>
+    as.data.frame() |>
+    as_tibble() |>
+    mutate(
+      gene_symbol = str_trim(coalesce(
+        as.character(gene_name),
+        as.character(gene_id)
+      ))
+    )
+
+  common_samples <- intersect(colnames(rppa_exprs), colnames(rna_expr))
+
+  if (length(common_samples) >= 10) {
+    rppa_common <- rppa_exprs[, common_samples, drop = FALSE]
+    rna_common <- rna_expr[, common_samples, drop = FALSE]
+
+    rppa_gene_map <- rppa_feature_meta |>
+      transmute(
+        feature_id = feature_id,
+        gene_symbol = str_trim(coalesce(gene_symbol, clean_id))
+      ) |>
+      filter(!is.na(gene_symbol) & gene_symbol != "")
+
+    rppa_gene_expr <- rowsum(
+      rppa_common[rppa_gene_map$feature_id, , drop = FALSE],
+      group = rppa_gene_map$gene_symbol,
+      reorder = FALSE
+    )
+
+    rna_gene_symbols <- rna_feature_meta$gene_symbol
+    valid_rna <- !is.na(rna_gene_symbols) & rna_gene_symbols != ""
+    rna_gene_expr <- rowsum(
+      rna_common[valid_rna, , drop = FALSE],
+      group = rna_gene_symbols[valid_rna],
+      reorder = FALSE
+    )
+
+    shared_genes <- intersect(
+      rownames(rppa_gene_expr),
+      rownames(rna_gene_expr)
+    )
+
+    if (length(shared_genes) >= 50) {
+      rppa_shared <- rppa_gene_expr[shared_genes, , drop = FALSE]
+      rna_shared <- rna_gene_expr[shared_genes, , drop = FALSE]
+
+      sample_ids <- colnames(rppa_shared)
+      sample_cor <- purrr::map_dbl(
+        sample_ids,
+        ~ suppressWarnings(cor(
+          rppa_shared[, .x],
+          rna_shared[, .x],
+          method = "spearman",
+          use = "pairwise.complete.obs"
+        ))
+      )
+
+      spearman_summary <- summary(sample_cor)
+
+      DT::datatable(
+        spearman_summary |>
+          enframe(name = "statistic", value = "value") |>
+          mutate(value = round(value, 3)),
+        colnames = c("Statistic", "Value"),
+        caption = "RNA–RPPA Spearman correlation summary.",
+        options = list(dom = 't')
+      )
+
+      tibble(
+        sampleid = sample_ids,
+        spearman = sample_cor
+      ) |>
+        left_join(rppa_samples, by = "sampleid") |>
+        ggplot(aes(x = spearman)) +
+        geom_histogram(
+          fill = col_rppa_corr_hist,
+          color = "white",
+          bins = 25
+        ) +
+        labs(
+          title = "Spearman correlation between RNA and RPPA abundance",
+          x = "Spearman rho",
+          y = "Samples"
+        ) +
+        theme_minimal(base_size = 12)
+    }
+  }
+}
+```
+
+Spearman rho measures how well two profiles maintain rank order, so each histogram bar captures how closely a given cell line’s RPPA intensities track its RNA abundance across shared genes. The distribution stays positive with modest spread (centered around ~0.4), mirroring mass-spec: RPPA and RNA generally move together while still leaving room for protein-specific regulation.
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

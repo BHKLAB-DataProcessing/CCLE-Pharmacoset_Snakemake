@@ -27,6 +27,9 @@ if (exists("snakemake")) {
 library(MultiAssayExperiment)
 library(data.table)
 
+`%||%` <- function(x, y) if (!is.null(x)) x else y
+
+
 # Read in metadata
 # ----------------
 message(paste("Loading: ", INPUT$sampleMetadata, sep = "\n\t"))
@@ -39,43 +42,116 @@ se_list <- lapply(INPUT$summarizedExperiment_lists, function(x) {
   message(paste("Loading: ", x, sep = "\n\t"))
   readRDS(x)
 }) |>
-  unlist()
+  unlist(recursive = FALSE)
 
-se_sampleNames <- lapply(
-  se_list,
-  SummarizedExperiment::colnames
-) |>
-  unlist() |>
-  unique()
-
-if (!all(se_sampleNames %in% sampleMetadata$CCLE.sampleid)) {
-  print("Not all sample names are in the sample metadata")
-
-  message(
-    "Removing the following sample names from the summarized experiments:\n\t"
-  )
-  missing <- setdiff(se_sampleNames, sampleMetadata$CCLE.sampleid)
-  message("\t", paste(missing, collapse = "\n\t"))
-
-  se_list <- lapply(se_list, function(x) {
-    x[, !colnames(x) %in% missing]
-  })
+# Ensure each experiment has a unique, non-empty name -------------------- #
+name_fallback <- function(se_obj, idx) {
+  meta <- tryCatch(se_obj@metadata, error = function(...) list())
+  ann <- meta$annotation %||% meta$datatype %||% meta$data_source$dataset %||% NULL
+  if (is.null(ann) || ann == "") ann <- paste0("exp", idx)
+  ann
 }
 
+names(se_list) <- mapply(
+  function(nm, obj, idx) {
+    if (!is.null(nm) && nm != "") return(nm)
+    name_fallback(obj, idx)
+  },
+  nm = names(se_list),
+  obj = se_list,
+  idx = seq_along(se_list)
+)
 
+# Prefer informative names from metadata$datatype when available
+names(se_list) <- mapply(function(obj, nm) {
+  dt <- tryCatch(obj@metadata$datatype, error = function(...) NA_character_)
+  if (!is.null(dt) && !is.na(dt) && dt != "") return(dt)
+  nm
+}, obj = se_list, nm = names(se_list))
+
+# TODO: fix this mess...
+
+# Normalize to descriptive, unique assay names
+rename_map <- c(
+  "genes_tpm" = "rnaseq.gene_tpm",
+  "transcripts_tpm" = "rnaseq.transcript_tpm",
+  "genes_counts" = "rnaseq.gene_counts",
+  "genes_rpkm" = "rnaseq.gene_rpkm",
+  "genes" = "cnv.gene_log2",
+  "genes.1" = "mutation.gene_binary",
+  "proteomics" = "proteomics.rppa",
+  "proteomics.1" = "proteomics.massspec_intensity",
+  "tss_1kb" = "methylation.tss_1kb",
+  "tss_cpg_clusters" = "methylation.tss_cpg_clusters",
+  "cgi_cpg_clusters" = "methylation.cgi_cpg_clusters",
+  "enhancer_cpg_clusters" = "methylation.enhancer_cpg_clusters",
+  "metabolites" = "metabolomics.lcms",
+  "mirna_gct" = "mirna.gene_gct",
+  "mirna_mimat" = "mirna.mimat_expression",
+  "exon_usage_ratio" = "exon.usage_ratio",
+  "exon_usage_denominator" = "exon.usage_denominator",
+  "segments_wgs" = "cnv.segments_wgs",
+  "global_histone_mrm" = "chromatin.histone_mrm",
+  "filtered" = "fusion.calls"
+)
+names(se_list) <- vapply(
+  names(se_list),
+  function(nm) {
+    if (!is.null(rename_map[[nm]])) rename_map[[nm]] else nm
+  },
+  character(1)
+)
+
+if (is.null(names(se_list))) {
+  names(se_list) <- paste0("exp", seq_along(se_list))
+}
+
+names(se_list)[is.na(names(se_list)) | names(se_list) == ""] <- paste0(
+  "exp",
+  which(is.na(names(se_list)) | names(se_list) == "")
+)
+
+names(se_list) <- make.unique(names(se_list))
+
+# Collect sample IDs across experiments and drop any not in metadata ---- #
 data.table::setkeyv(sampleMetadata, "CCLE.sampleid")
-sampleMetadata[, sampleid := cellosaurus.cellLineName]
+sampleMetadata[, sampleid := CCLE.sampleid]
+sampleMetadata[, depmap_id := CCLE.depMapID]
 
-# rename the columns of each summarized experiment to match the "sampleid" column in the sample metadata
+map_to_ccle <- function(ids) {
+  ids_ccle <- ifelse(
+    ids %in% sampleMetadata$sampleid,
+    ids,
+    sampleMetadata$sampleid[match(ids, sampleMetadata$depmap_id)]
+  )
+  ids_ccle
+}
+
+# Map column names to CCLE sample ids where possible, then drop unmapped
 se_list <- lapply(se_list, function(x) {
-  colnames(x) <- sampleMetadata[x$sampleid, sampleid]
+  mapped <- map_to_ccle(SummarizedExperiment::colnames(x))
+  keep <- !is.na(mapped) & mapped != ""
+  if (!all(keep)) {
+    message("Dropping ", sum(!keep), " unmapped samples for experiment ",
+            x@metadata$annotation %||% "")
+  }
+  if (any(keep)) {
+    x <- x[, keep]
+    colnames(x) <- mapped[keep]
+  } else {
+    # preserve empty experiment with zero samples
+    colnames(x) <- character(0)
+    x <- x[, 0]
+  }
   x
 })
+
 
 # Build MultiAssayExperiment
 # --------------------------
 summarizedExperimentLists <- se_list
-summarizedExperimentLists <- lapply(summarizedExperimentLists, function(x) {
+summarizedExperimentLists <- lapply(seq_along(summarizedExperimentLists), function(i) {
+  x <- summarizedExperimentLists[[i]]
   existing_cd <- as.data.frame(SummarizedExperiment::colData(x))
 
   if (!nrow(existing_cd)) {
@@ -96,29 +172,65 @@ summarizedExperimentLists <- lapply(summarizedExperimentLists, function(x) {
     existing_cd$ccle_sample_id <- original_sampleid
   }
 
-  existing_cd$sampleid <- colnames(x)
+  # Join expanded sample metadata to add rich columns where available
+  meta_join <- sampleMetadata[data.table(sampleid = colnames(x)), on = "sampleid"]
+  meta_join[, dataset_sample_id := existing_cd$dataset_sample_id]
+  meta_join[, ccle_sample_id := existing_cd$ccle_sample_id]
 
-  if (!"batchid" %in% names(existing_cd)) {
-    existing_cd$batchid <- NA
+  # Keep original sample order
+  meta_join <- meta_join[match(colnames(x), meta_join$sampleid)]
+
+  # Ensure required columns exist
+  if (!"batchid" %in% names(meta_join)) {
+    meta_join[, batchid := NA]
   }
 
-  existing_cd$batchid <- rep(existing_cd$batchid, length.out = ncol(x))
+  meta_join_df <- as.data.frame(meta_join)
+  stopifnot(nrow(meta_join_df) == length(colnames(x)))
+  tryCatch({
+    rownames(meta_join_df) <- colnames(x)
+  }, error = function(e) {
+    stop(
+      paste0(
+        "rownames assignment failed for experiment ",
+        names(summarizedExperimentLists)[i], "; nrow=",
+        nrow(meta_join_df), " nsamples=", length(colnames(x)),
+        " first names: ", paste(head(colnames(x), 3), collapse = ",")
+      ),
+      call. = FALSE
+    )
+  })
 
-  rownames(existing_cd) <- colnames(x)
-
-  x@colData <- MultiAssayExperiment::DataFrame(
-    existing_cd,
-    row.names = colnames(x)
-  )
+  x <- tryCatch({
+    if (methods::is(x, "RaggedExperiment")) {
+      x
+    } else {
+      x@colData <- MultiAssayExperiment::DataFrame(
+        meta_join_df,
+        row.names = colnames(x)
+      )
+      x
+    }
+  }, error = function(e) {
+    stop(
+      paste0(
+        "colData assignment failed for experiment ",
+        names(summarizedExperimentLists)[i],
+        " (class=", class(x), "): ncol=", ncol(x),
+        " meta_rows=", nrow(meta_join_df), " message=", conditionMessage(e)
+      ),
+      call. = FALSE
+    )
+  })
   x
 })
+names(summarizedExperimentLists) <- names(se_list)
 ExpList <- MultiAssayExperiment::ExperimentList(summarizedExperimentLists)
 message(paste("ExperimentList:", capture.output(show(ExpList)), sep = "\n\t"))
 
 data.table::setkeyv(sampleMetadata, "sampleid")
 # Create a sample map for each experiment in the ExperimentList
 sampleMapList <- lapply(summarizedExperimentLists, function(se) {
-  stopifnot(all(colnames(se) %in% sampleMetadata$sampleid))
   data.frame(
     primary = colnames(se),
     colname = colnames(se),
