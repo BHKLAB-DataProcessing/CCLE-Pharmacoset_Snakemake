@@ -11,11 +11,14 @@ if (exists("snakemake")) {
     sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources/", paste0(snakemake@rule, ".RData"))
+    file.path("snapshots/", paste0(snakemake@rule, ".RData"))
   )
 }
-load("resources/build_PharmacoSet.RData")
+if (file.exists("snapshots/build_PharmacoSet.RData")) {
+  load("snapshots/build_PharmacoSet.RData")
+}
 
 suppressPackageStartupMessages(library(PharmacoGx))
 snakemake@source("metadata/cleanCharacterStrings.R") # for cleanCharacterStrings()
@@ -97,6 +100,11 @@ pset <- PharmacoGx::PharmacoSet2(
   ),
   datasetType = "sensitivity"
 )
+
+# Preserve readable sample IDs in `unique.sampleid`
+pset@sample$unique.sampleid <- pset@sample$sampleid
+pset@curation$sample$unique.sampleid <- pset@curation$sample$sampleid
+
 message(paste(capture.output(show(pset)), collapse = "\n\t"))
 
 message("Object Size (pset):")

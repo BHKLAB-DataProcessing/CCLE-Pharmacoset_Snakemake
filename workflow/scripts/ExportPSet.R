@@ -13,11 +13,14 @@ if (exists("snakemake")) {
     sink(snakemake@log[[1]], FALSE, c("output", "message"), TRUE)
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources/ExportPSet.RData")
+    file.path("snapshots/ExportPSet.RData")
   )
 }
-load("resources/ExportPSet.RData")
+if (file.exists(file.path("snapshots/ExportPSet.RData"))) {
+  load(file.path("snapshots/ExportPSet.RData"))
+}
 suppressPackageStartupMessages(library(PharmacoGx, quietly = TRUE))
 
 # load pset

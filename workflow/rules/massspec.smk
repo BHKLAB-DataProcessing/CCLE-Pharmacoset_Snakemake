@@ -1,5 +1,5 @@
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from workflow.utils import filename_from_url
 
 rawdata = Path(config["directories"]["rawdata"])
 procdata = Path(config["directories"]["procdata"])
@@ -11,16 +11,8 @@ massspec_cfg = config["molecularProfiles"]["massspec"]["gygi_ccle"]
 conda_env = "../envs/r-bioconductor.yaml"
 
 
-def _filename_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    name = unquote(Path(parsed.path).name)
-    if not name:
-        raise ValueError(f"Unable to determine filename from URL: {url}")
-    return name
-
-
-quant_download_name = _filename_from_url(massspec_cfg["url"])
-sample_info_download_name = _filename_from_url(massspec_cfg["sample_info_url"])
+quant_download_name = filename_from_url(massspec_cfg["url"])
+sample_info_download_name = filename_from_url(massspec_cfg["sample_info_url"])
 
 
 rule download_MassSpec:

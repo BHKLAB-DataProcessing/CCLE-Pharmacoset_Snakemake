@@ -15,11 +15,15 @@ if (exists("snakemake")) {
     )
   }
 
+  dir.create("snapshots", showWarnings = FALSE, recursive = TRUE)
   save.image(
-    file.path("resources/", paste0(snakemake@rule, ".RData"))
+    file.path("snapshots/", paste0(snakemake@rule, ".RData"))
   )
+} else {
+  if (file.exists("snapshots/build_MultiAssayExperiment.RData")) {
+    load("snapshots/build_MultiAssayExperiment.RData")
+  }
 }
-# load("resources/build_MultiAssayExperiment.RData")
 library(MultiAssayExperiment)
 library(data.table)
 

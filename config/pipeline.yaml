@@ -1,4 +1,4 @@
-name: DATASET_NAME
+name: CCLE
 description: TODO::(add description)
 
 url: https://sites.broadinstitute.org/ccle/
@@ -16,7 +16,7 @@ containers:
 
 # Configure Data URLs
 metadata:
-  sampleAnnotation: https://data.broadinstitute.org/ccle/Cell_lines_annotations_20181226.txt
+  sampleAnnotation: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCell_lines_annotations_20181226.txt&bucket=depmap-external-downloads
   treatmentAnnotation: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_NP24.2009_profiling_2012.02.20.csv
   referenceGenome:
     description: 
@@ -25,7 +25,7 @@ metadata:
     species: homo_sapiens
     release: 19
     build: GRCh37
-    url: https://data.broadinstitute.org/ccle/gencode.v19.genes.v7_model.patched_contigs.gtf.gz
+    url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2Fgencode.v19.genes.v7_model.patched_contigs.gtf.gz&bucket=depmap-external-downloads
 
 treatmentResponse:
   date: '2015-02-24'
@@ -37,39 +37,31 @@ treatmentResponse:
     url: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_GNF_data_090613.xls
 
 molecularProfiles:
-  rnaseq: # to name rnaseq
+  rnaseq:
     rsem-genes_tpm: 
       description: RNA-seq gene expression data. TPM values are log2 transformed.
-      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz&bucket=depmap-external-downloads
     rsem-transcripts_tpm: 
       description: TODO::(add description)
-      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt.gz
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_rsem_transcripts_tpm_20180929.txt.gz&bucket=depmap-external-downloads
     genes_counts: 
       description: TODO::(add description)
-      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_counts_20180929.gct.gz
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_genes_counts_20180929.gct.gz&bucket=depmap-external-downloads
     genes_rpkm:
       description: TODO::(add description)
-      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_rpkm_20180929.gct.gz
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_genes_rpkm_20180929.gct.gz&bucket=depmap-external-downloads
 
   mutation:
-    oncomapAssay: 
-      description: TODO::(add description)
-      tool: TODO::(add tool)
-      url: "https://data.broadinstitute.org/ccle_legacy_data/oncomap_mutations/CCLE_Oncomap3_Assays_2012-04-09.csv"
-    oncomap: 
-      description: TODO::(add description)
-      tool: TODO::(add tool)
-      url: "https://data.broadinstitute.org/ccle_legacy_data/oncomap_mutations/CCLE_Oncomap3_2012-04-09.maf"
-    hybridCapture:
-      description: TODO::(add description)
-      tool: TODO::(add tool)
-      url: "https://data.broadinstitute.org/ccle_legacy_data/hybrid_capture_sequencing/CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf"
+    somatic_mutations:
+      description: DepMap WGS small variants (VEP-annotated) per model.
+      tool: VEP
+      url: "https://depmap.org/portal/download/api/download?file_name=downloads-by-canonical-id%2Fpublic-25q3-b56c.50%2FOmicsSomaticMutations.csv&dl_name=OmicsSomaticMutations.csv&bucket=depmap-external-downloads"
 
   cnv:
-    copynumber_byGene: 
+    copynumber_gene_wgs: 
       description: TODO::(add description)
       tool: TODO::(add tool)
-      url: "https://data.broadinstitute.org/ccle_legacy_data/dna_copy_number/CCLE_copynumber_byGene_2013-12-03.txt.gz"
+      url: https://depmap.org/portal/download/api/download?file_name=downloads-by-canonical-id%2Fpublic-25q3-b56c.61%2FOmicsCNGeneWGS.csv&dl_name=OmicsCNGeneWGS.csv&bucket=depmap-external-downloads
   
   rppa:
     tcpa_rppa500:
