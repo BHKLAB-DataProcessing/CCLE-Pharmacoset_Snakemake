@@ -69,9 +69,9 @@ if (!file.exists(pset_path)) {
 pset <- readRDS(pset_path)
 assay_mae <- PharmacoGx::molecularProfiles(pset)
 
-rna_tpm <- MultiAssayExperiment::experiments(assay_mae)[["rnaseq.genes_tpm"]]
+rna_tpm <- MultiAssayExperiment::experiments(assay_mae)[["rnaseq.gene_tpm"]]
 rna_counts <- tryCatch(
-  MultiAssayExperiment::experiments(assay_mae)[["rnaseq.genes_counts"]],
+  MultiAssayExperiment::experiments(assay_mae)[["rnaseq.gene_counts"]],
   error = function(e) NULL
 )
 
@@ -83,6 +83,12 @@ cell_meta <- CoreGx::cellInfo(pset) |>
     CCLE.histology,
     CCLE.depMapID,
     cellosaurus.cellLineName
+  ) |>
+  rename(
+    site_primary = CCLE.site_Primary,
+    histology = CCLE.histology,
+    depmap_id = CCLE.depMapID,
+    cell_line = cellosaurus.cellLineName
   ) |>
   mutate(sampleid = as.character(sampleid))
 
@@ -119,18 +125,34 @@ DT::datatable(
 *   **Cohort Diversity:** This plot visualizes the distribution of cell lines across different tissue types within the RNA-seq cohort. A diverse representation of lineages is important for capturing broad biological variability relevant to cancer research.
 *   **Balanced Representation:** Ideally, no single tissue type should overwhelmingly dominate the cohort, unless by design, to avoid biases in downstream analyses.
 
-```{r lineage-composition, fig.height=5}
+```{r lineage-composition, fig.width=8, fig.height=5.5}
 lineage_counts <- sample_meta |>
   left_join(cell_meta, by = "sampleid") |>
-  mutate(tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified")) |>
-  count(tissue, sort = TRUE)
+  mutate(tissue = coalesce(site_primary, histology, "unspecified")) |>
+  count(tissue, sort = TRUE) |>
+  mutate(
+    tissue = factor(tissue, levels = tissue),
+    label = sprintf("%s (n=%s)", tissue, scales::comma(n))
+  )
 
 ggplot(lineage_counts, aes(x = "", y = n, fill = tissue)) +
   geom_col(width = 1, color = "white") +
   coord_polar(theta = "y") +
-  scale_fill_manual(values = tissue_palette(lineage_counts$tissue)) +
+  scale_fill_manual(
+    values = tissue_palette(lineage_counts$tissue),
+    labels = lineage_counts$label
+  ) +
   labs(title = "Lineage composition of RNA-seq cohort", x = NULL, y = NULL) +
-  theme(axis.text = element_blank(), axis.ticks = element_blank())
+  guides(fill = guide_legend(ncol = 2, byrow = TRUE)) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    legend.key.size = unit(0.4, "cm"),
+    legend.spacing.y = unit(0.1, "cm"),
+    plot.title = element_text(size = 12, margin = margin(b = 8))
+  )
 ```
 
 ### Missingness and library sizes
@@ -161,7 +183,10 @@ ggplot(
 *   **Expectation:** Similar to sample-level missingness, feature-level missingness should ideally be 0% for TPM data. High missingness for specific genes could indicate issues with annotation or very low expression across the board.
 
 ```{r feature-missing, fig.height=4.5}
-feature_missing_df <- tibble(feature = names(feature_miss), missing = feature_miss)
+feature_missing_df <- tibble(
+  feature = names(feature_miss),
+  missing = feature_miss
+)
 
 if (n_distinct(feature_missing_df$missing) <= 1) {
   DT::datatable(
@@ -216,8 +241,9 @@ if (!is.null(rna_counts)) {
 
 ### Interpretation Guide
 
-*   **Shape:** Gene expression (TPM) distributions are typically right-skewed, with many genes having low expression and a few highly expressed genes. The `log1p` transformation often makes the distribution more symmetric.
+*   **Shape:** Gene expression (TPM) distributions are typically right-skewed, with many genes having low expression and a few highly expressed genes. The `log2(TPM + 0.001)` transformation often makes the distribution more symmetric.
 *   **Dynamic Range:** A wide distribution indicates a good dynamic range of expression levels captured by the assay.
+*   **Why plots can look flat:** If density is computed on linear TPM and only the x-axis is log-transformed, the density can appear flattened. Here we compute density directly on `log2(TPM + 0.001)` values for a more interpretable shape.
 
 ```{r expr-distribution, fig.height=4.5}
 vals <- as.numeric(tpm_mat)
@@ -225,13 +251,13 @@ vals <- vals[is.finite(vals)]
 if (length(vals) > 200000) {
   vals <- sample(vals, 200000)
 }
+log_vals <- log2(vals + 1e-3)
 
-ggplot(tibble(tpm = vals), aes(x = tpm)) +
+ggplot(tibble(log_tpm = log_vals), aes(x = log_tpm)) +
   geom_density(fill = col_expr_density, alpha = 0.3) +
-  scale_x_continuous(trans = "log1p") +
   labs(
     title = "Gene expression distribution (TPM)",
-    x = "TPM (log1p)",
+    x = "log2(TPM + 0.001)",
     y = "Density"
   )
 ```
@@ -249,11 +275,17 @@ top_genes <- head(order(gene_var, decreasing = TRUE), 1000)
 var_df <- tibble(
   gene = rownames(tpm_mat)[top_genes],
   variance = gene_var[top_genes]
-)
+) |>
+  mutate(log_variance = log1p(variance))
 
-ggplot(var_df, aes(x = variance)) +
+ggplot(var_df, aes(x = log_variance)) +
   geom_histogram(bins = 40, fill = palette_classic[5], color = "white") +
-  labs(title = "Variance of top genes", x = "Variance (TPM)", y = "Gene count")
+  labs(
+    title = "Variance of top genes",
+    subtitle = sprintf("Top %s HVGs", scales::comma(nrow(var_df))),
+    x = "log1p(Variance of TPM)",
+    y = "Gene count"
+  )
 ```
 
 ### Interpretation Guide (Sample Mean TPM)
@@ -263,13 +295,17 @@ ggplot(var_df, aes(x = variance)) +
 
 ```{r sample-means, fig.height=4.5}
 sample_means <- colMeans(tpm_mat, na.rm = TRUE)
+sample_means_log2 <- log2(sample_means + 1e-3)
 ggplot(
-  tibble(sampleid = names(sample_means), mean_tpm = sample_means),
-  aes(x = mean_tpm)
+  tibble(sampleid = names(sample_means), mean_tpm_log2 = sample_means_log2),
+  aes(x = mean_tpm_log2)
 ) +
   geom_histogram(bins = 40, fill = col_mean_tpm, color = "white") +
-  scale_x_continuous(trans = "log1p") +
-  labs(title = "Sample mean TPM", x = "Mean TPM (log1p)", y = "Samples")
+  labs(
+    title = "Sample mean TPM",
+    x = "Mean log2(TPM + 0.001)",
+    y = "Samples"
+  )
 ```
 
 ## Cross-sample Structure
@@ -306,17 +342,23 @@ if (ncol(mat) > 2) {
     error = function(e) NULL
   )
   if (!is.null(pca)) {
+    var_explained <- (pca$sdev^2) / sum(pca$sdev^2)
     pca_df <- as_tibble(pca$x[, 1:2], rownames = "sampleid") |>
       left_join(sample_meta, by = "sampleid") |>
       left_join(cell_meta, by = "sampleid") |>
       mutate(
-        tissue = coalesce(CCLE.site_Primary, CCLE.histology, "unspecified")
+        tissue = coalesce(site_primary, histology, "unspecified")
       )
 
     ggplot(pca_df, aes(x = PC1, y = PC2, color = tissue)) +
       geom_point(alpha = 0.8, size = 1.8) +
       scale_color_manual(values = tissue_palette(pca_df$tissue)) +
-      labs(title = "PCA of RNA-seq (TPM)", color = "Tissue") +
+      labs(
+        title = "PCA of RNA-seq (TPM)",
+        color = "Tissue",
+        x = sprintf("PC1 (%.1f%%)", 100 * var_explained[1]),
+        y = sprintf("PC2 (%.1f%%)", 100 * var_explained[2])
+      ) +
       theme(legend.position = "none")
   } else {
     DT::datatable(
@@ -342,7 +384,7 @@ if (ncol(mat) > 2) {
 *   **Batch Effects:** Lack of expected clustering or strong block-like patterns unrelated to biology can indicate batch effects.
 *   **Subset for Visibility:** A subset of samples is plotted for clarity in the heatmap. A full heatmap would be too dense for visualization but would confirm these patterns across all samples.
 
-```{r correlation-heatmap, fig.height=5}
+```{r correlation-heatmap, fig.width=7.5, fig.height=6}
 cor_genes <- matrixStats::rowVars(tpm_mat, na.rm = TRUE)
 top_cor_idx <- head(order(cor_genes, decreasing = TRUE), 5000)
 cor_mat <- cor(
@@ -357,9 +399,66 @@ subset_idx <- if (ncol(cor_mat) > 80) {
 cor_subset <- cor_mat[subset_idx, subset_idx]
 pheatmap(
   cor_subset,
-  color = colorRampPalette(c("#08306B", "white", "#7F0000"))(201),
-  main = "Sample–sample correlation (subset for visibility)"
+  color = colorRampPalette(c("white", "#B2182B"))(201),
+  breaks = seq(0, 1, length.out = 201),
+  main = "Sample–sample correlation (subset for visibility)",
+  angle_col = 45,
+  fontsize = 7,
+  fontsize_row = 6,
+  fontsize_col = 6,
+  treeheight_row = 20,
+  treeheight_col = 20,
+  border_color = NA
 )
+```
+
+```{r replicate-correlations}
+replicate_meta <- sample_meta |>
+  left_join(cell_meta, by = "sampleid") |>
+  filter(!is.na(cell_line))
+
+replicate_groups <- replicate_meta |>
+  count(cell_line, name = "n") |>
+  filter(n > 1)
+
+if (nrow(replicate_groups)) {
+  rep_corr <- replicate_meta |>
+    filter(cell_line %in% replicate_groups$cell_line) |>
+    group_by(cell_line) |>
+    summarise(
+      pairs = list(combn(sampleid, 2, simplify = FALSE)),
+      .groups = "drop"
+    ) |>
+    unnest(pairs) |>
+    transmute(
+      cell_line = cell_line,
+      sample_a = map_chr(pairs, 1),
+      sample_b = map_chr(pairs, 2),
+      correlation = map_dbl(
+        pairs,
+        ~ cor_mat[.x[1], .x[2]]
+      )
+    ) |>
+    arrange(desc(correlation))
+
+  if (nrow(rep_corr)) {
+    DT::datatable(
+      rep_corr,
+      caption = "Replicate pair correlations (cell lines with >=2 samples).",
+      options = list(dom = "t", pageLength = 10)
+    )
+  } else {
+    DT::datatable(
+      tibble(Message = "Replicate pairs not found after filtering."),
+      options = list(dom = "t")
+    )
+  }
+} else {
+  DT::datatable(
+    tibble(Message = "No cell lines with replicate samples detected."),
+    options = list(dom = "t")
+  )
+}
 ```
 
 ## Gene-level Checks
@@ -389,13 +488,15 @@ hk_vals <- purrr::map_dfr(housekeeping, function(g) {
 })
 
 if (nrow(hk_vals)) {
-  ggplot(hk_vals, aes(x = gene, y = tpm, fill = gene)) +
+  hk_vals <- hk_vals |>
+    mutate(log2_tpm = log2(tpm + 1e-3))
+
+  ggplot(hk_vals, aes(x = gene, y = log2_tpm, fill = gene)) +
     geom_boxplot(outlier.alpha = 0.2) +
-    scale_y_continuous(trans = "log1p") +
     labs(
       title = "Housekeeping gene expression consistency",
       x = NULL,
-      y = "TPM (log1p)"
+      y = "log2(TPM + 0.001)"
     ) +
     theme(legend.position = "none")
 } else {
@@ -482,7 +583,7 @@ plot_gc_bias <- function(df, gc_col) {
     labs(
       title = "Gene Expression vs. GC Content",
       x = "GC Content",
-      y = "Mean log2(TPM + 1)"
+      y = "Mean log2(TPM + 0.001)"
     ) +
     theme_minimal(base_size = 12)
 }
@@ -495,7 +596,7 @@ plot_length_bias <- function(df, length_col) {
     labs(
       title = "Gene Expression vs. Gene Length",
       x = "Gene Length (log10)",
-      y = "Mean log2(TPM + 1)"
+      y = "Mean log2(TPM + 0.001)"
     ) +
     theme_minimal(base_size = 12)
 }
@@ -503,7 +604,7 @@ plot_length_bias <- function(df, length_col) {
 if (length(available_gc_col) > 0 || length(available_length_col) > 0) {
   tpm_mean_log2 <- tibble(
     gene_id = rownames(tpm_mat),
-    mean_tpm_log2 = log2(rowMeans(tpm_mat, na.rm = TRUE) + 1)
+    mean_tpm_log2 = log2(rowMeans(tpm_mat, na.rm = TRUE) + 1e-3)
   ) |>
     left_join(as_tibble(tpm_rd, rownames = "gene_id"), by = "gene_id")
 
