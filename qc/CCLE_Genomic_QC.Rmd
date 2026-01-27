@@ -63,8 +63,8 @@ if (!file.exists(pset_path)) {
 pset <- readRDS(pset_path)
 assay_mae <- PharmacoGx::molecularProfiles(pset)
 
-mut_se <- MultiAssayExperiment::experiments(assay_mae)[["mut.genes"]]
-cnv_se <- MultiAssayExperiment::experiments(assay_mae)[["cnv.genes"]]
+mut_se <- MultiAssayExperiment::experiments(assay_mae)[["mutation.gene_binary"]]
+cnv_se <- MultiAssayExperiment::experiments(assay_mae)[["cnv.gene_log2"]]
 
 mut_mat <- SummarizedExperiment::assay(mut_se, "exprs")
 cnv_mat <- SummarizedExperiment::assay(cnv_se, "exprs")
@@ -86,15 +86,21 @@ cell_meta <- CoreGx::cellInfo(pset) |>
   ) |>
   mutate(sampleid = as.character(sampleid))
 
-mut_overview <- tibble(
-  samples = ncol(mut_mat),
-  genes = nrow(mut_mat),
-  nonzero_fraction = mean(
+nonzero_fraction <- if (is.numeric(mut_mat) || is.logical(mut_mat)) {
+  mean(mut_mat > 0, na.rm = TRUE)
+} else {
+  mean(
     !is.na(mut_mat) &
       mut_mat != "" &
       !grepl("^wt", mut_mat, ignore.case = TRUE),
     na.rm = TRUE
   )
+}
+
+mut_overview <- tibble(
+  samples = ncol(mut_mat),
+  genes = nrow(mut_mat),
+  nonzero_fraction = nonzero_fraction
 )
 
 cnv_overview <- tibble(
@@ -140,9 +146,13 @@ DT::datatable(
 *   **Outliers:** Samples with extremely high mutation burden might be hypermutated, potentially due to DNA repair deficiencies, while samples with unusually low counts might indicate data quality issues or misclassification.
 
 ```{r mutation-burden, fig.height=4.5}
-mut_present <- !is.na(mut_mat) &
-  mut_mat != "" &
-  !grepl("^wt", mut_mat, ignore.case = TRUE)
+mut_present <- if (is.numeric(mut_mat) || is.logical(mut_mat)) {
+  mut_mat > 0
+} else {
+  !is.na(mut_mat) &
+    mut_mat != "" &
+    !grepl("^wt", mut_mat, ignore.case = TRUE)
+}
 mut_binary <- matrix(
   0L,
   nrow = nrow(mut_mat),
@@ -296,12 +306,87 @@ if (length(available_allele_cols) >= 2) {
     )
   }
 } else {
-  DT::datatable(
-    tibble(
-      Message = "Insufficient allele information (e.g., Reference_Allele, Tumor_Seq_Allele2) in mutation feature metadata for Ti/Tv ratio calculation. Please check mut_rd structure."
-    ),
-    options = list(dom = 't')
+  maf_path <- here::here(
+    "rawdata",
+    "mutation",
+    "CCLE_hybrid_capture1650_hg19_NoCommonSNPs_NoNeutralVariants_CDS_2012.05.07.maf"
   )
+
+  if (file.exists(maf_path)) {
+    maf_df <- readr::read_tsv(maf_path, comment = "#", show_col_types = FALSE)
+    maf_cols <- intersect(allele_cols, names(maf_df))
+    if (length(maf_cols) >= 2) {
+      ref_col <- maf_cols[1]
+      alt_col <- maf_cols[2]
+      maf_df <- maf_df |>
+        select(!!sym(ref_col), !!sym(alt_col)) |>
+        filter(
+          nchar(!!sym(ref_col)) == 1,
+          nchar(!!sym(alt_col)) == 1,
+          !!sym(ref_col) %in% c("A", "C", "G", "T"),
+          !!sym(alt_col) %in% c("A", "C", "G", "T")
+        ) |>
+        mutate(
+          is_transition = case_when(
+            (!!sym(ref_col) %in% purine &
+              !!sym(alt_col) %in% purine &
+              !!sym(ref_col) != !!sym(alt_col)) ~ TRUE,
+            (!!sym(ref_col) %in% pyrimidine &
+              !!sym(alt_col) %in% pyrimidine &
+              !!sym(ref_col) != !!sym(alt_col)) ~ TRUE,
+            TRUE ~ FALSE
+          ),
+          is_transversion = case_when(
+            (!!sym(ref_col) %in% purine & !!sym(alt_col) %in% pyrimidine) ~ TRUE,
+            (!!sym(ref_col) %in% pyrimidine & !!sym(alt_col) %in% purine) ~ TRUE,
+            TRUE ~ FALSE
+          )
+        ) |>
+        filter(is_transition | is_transversion)
+
+      num_transitions <- sum(maf_df$is_transition, na.rm = TRUE)
+      num_transversions <- sum(maf_df$is_transversion, na.rm = TRUE)
+      titv_ratio <- if (num_transversions > 0) {
+        num_transitions / num_transversions
+      } else {
+        NA_real_
+      }
+
+      DT::datatable(
+        tibble(
+          Metric = c(
+            "Source MAF",
+            "Number of Transitions",
+            "Number of Transversions",
+            "Ti/Tv Ratio"
+          ),
+          Value = as.character(c(
+            basename(maf_path),
+            num_transitions,
+            num_transversions,
+            round(titv_ratio, 3)
+          ))
+        ),
+        colnames = c("Metric", "Value"),
+        caption = "Transition/Transversion (Ti/Tv) Ratio Summary (MAF fallback).",
+        options = list(dom = 't')
+      )
+    } else {
+      DT::datatable(
+        tibble(
+          Message = "MAF file found, but allele columns were not present for Ti/Tv calculation."
+        ),
+        options = list(dom = 't')
+      )
+    }
+  } else {
+    DT::datatable(
+      tibble(
+        Message = "Insufficient allele information (e.g., Reference_Allele, Tumor_Seq_Allele2) in mutation feature metadata for Ti/Tv ratio calculation. Please check mut_rd structure."
+      ),
+      options = list(dom = 't')
+    )
+  }
 }
 ```
 
@@ -472,6 +557,7 @@ ggplot(lin_df, aes(x = r2)) +
 *   **Concordance Check:** These plots assess the relationship between gene mutations and copy number variations for selected genes (e.g., well-known oncogenes and tumor suppressors).
 *   **Expected Patterns:** For tumor suppressor genes, mutations are often accompanied by deletions of the wild-type allele (Loss of Heterozygosity - LOH). For oncogenes, activating mutations might coexist with amplifications. Conversely, mutually exclusive patterns might also be observed.
 *   **Data Integrity:** Unexpected patterns or lack of expected concordance for well-established genes might signal data quality issues or specific biological contexts.
+*   **Mutation Status Axis:** The x-axis is a logical flag derived from the mutation calls (`mut_binary == 1`). **TRUE** means the sample is mutated for that gene; **FALSE** means no mutation call (wild-type / not mutated) for that gene.
 *   **`knitr::asis_output`:** If selected genes are not found in the data, a message will be displayed.
 
 ```{r mut-cnv-concordance, fig.height=5}
@@ -509,7 +595,7 @@ plot_concordance <- function(g) {
     labs(
       title = paste0(g, ": CNV by mutation status"),
       subtitle = "CNV values capped at 8 for display",
-      x = "Mutated",
+      x = "Mutated (TRUE = mutated, FALSE = wild-type)",
       y = "CNV value"
     )
 }
