@@ -1,5 +1,5 @@
 name: CCLE
-description: TODO::(add description)
+description: CCLE 2019 dataset with harmonized multi-omics profiles and drug response data.
 
 url: https://sites.broadinstitute.org/ccle/
 # version: 2019
@@ -39,32 +39,30 @@ treatmentResponse:
 molecularProfiles:
   rnaseq:
     rsem-genes_tpm: 
-      description: RNA-seq gene expression data. TPM values are log2 transformed.
+      description: RNA-seq gene expression data (RSEM gene TPM; CCLE 2018-09-29 release). TPM values are log2 transformed.
       url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz&bucket=depmap-external-downloads
     rsem-transcripts_tpm: 
-      description: TODO::(add description)
+      description: RNA-seq transcript expression data (RSEM transcript TPM; CCLE 2018-09-29 release).
       url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_rsem_transcripts_tpm_20180929.txt.gz&bucket=depmap-external-downloads
     genes_counts: 
-      description: TODO::(add description)
+      description: RNA-seq gene expression read counts (GCT; CCLE 2018-09-29 release).
       url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_genes_counts_20180929.gct.gz&bucket=depmap-external-downloads
     genes_rpkm:
-      description: TODO::(add description)
+      description: RNA-seq gene expression RPKM values (GCT; CCLE 2018-09-29 release).
       url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_genes_rpkm_20180929.gct.gz&bucket=depmap-external-downloads
 
   mutation:
     somatic_mutations:
-      description: DepMap WGS small variants (VEP-annotated) per model.
-      tool: VEP
+      description: MAF-like somatic variants from WGS (Mutect2 calls, VEP-annotated) per model.
       url: "https://depmap.org/portal/download/api/download?file_name=downloads-by-canonical-id%2Fpublic-25q3-b56c.50%2FOmicsSomaticMutations.csv&dl_name=OmicsSomaticMutations.csv&bucket=depmap-external-downloads"
 
   cnv:
     copynumber_gene_wgs: 
-      description: TODO::(add description)
-      tool: TODO::(add tool)
+      description: Gene-level copy number data inferred from WGS (DepMap Public 25Q3).
       url: https://depmap.org/portal/download/api/download?file_name=downloads-by-canonical-id%2Fpublic-25q3-b56c.61%2FOmicsCNGeneWGS.csv&dl_name=OmicsCNGeneWGS.csv&bucket=depmap-external-downloads
     segments_wgs:
-      description: Segment-level WGS copy number profiles.
-      url: ../CCLE_2019/other/OmicsCNSegmentsWGS.csv
+      description: Segment-level copy number data derived from WGS (DepMap Public 25Q3).
+      url: https://depmap.org/portal/download/api/download?file_name=downloads-by-canonical-id%2Fpublic-25q3-b56c.60%2FOmicsCNSegmentsWGS.csv&dl_name=OmicsCNSegmentsWGS.csv&bucket=depmap-external-downloads
   
   rppa:
     tcpa_rppa500:
@@ -82,15 +80,15 @@ molecularProfiles:
     global_mrm:
       description: Global histone post-translational modification profiling measured by MRM (CCLE 2018-11-30 release).
       release: '2018-11-30'
-      url: ../CCLE_2019/primary/CCLE_GlobalChromatinProfiling_20181130.csv
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_GlobalChromatinProfiling_20181130.csv&bucket=depmap-external-downloads
 
   fusion:
     filtered:
-      description: STAR-Fusion filtered fusion calls (CCLE 2018-11-30 release).
-      url: ../CCLE_2019/supplemental/CCLE_Fusions_20181130.txt
+      description: STAR-Fusion filtered fusion calls for 1019 cell lines (CCLE 2018-11-30 release).
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_Fusions_20181130.txt&bucket=depmap-external-downloads
     unfiltered:
       description: STAR-Fusion unfiltered fusion calls (CCLE 2018-11-30 release).
-      url: ../CCLE_2019/supplemental/CCLE_Fusions_unfiltered_20181130.txt
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_Fusions_unfiltered_20181130.txt&bucket=depmap-external-downloads
     preferred: filtered
 
   epigenetics:
@@ -115,16 +113,16 @@ molecularProfiles:
 
   mirna:
     mirna_gct:
-      description: CCLE miRNA expression (GCT) release 2018-11-03.
-      url: ../CCLE_2019/primary/CCLE_miRNA_20181103.gct
+      description: CCLE miRNA expression (GCT) release 2018-11-03; same as CCLE_miRNA_20180525.gct.
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_miRNA_20181103.gct&bucket=depmap-external-downloads
     mirna_mimat:
-      description: CCLE miRNA expression (MIMAT CSV) release 2018-11-03.
-      url: ../CCLE_2019/primary/CCLE_miRNA_MIMAT.csv
+      description: CCLE miRNA expression (MIMAT CSV) release 2018-11-03; IDs mapped to MIMAT IDs.
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fmirna-573f.3%2FCCLE_miRNA_MIMAT.csv&bucket=depmap-external-downloads
 
   exon:
     exon_usage_ratio:
-      description: Exon inclusion ratios (PSI) from CCLE RNAseq 2018-09-29.
-      url: ../CCLE_2019/supplemental/CCLE_RNAseq_ExonUsageRatio_20180929.gct.gz
+      description: Exon inclusion ratios (PSI) from CCLE RNAseq 2018-09-29 (1019 cell lines).
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_ExonUsageRatio_20180929.gct.gz&bucket=depmap-external-downloads
     exon_usage_denominator:
-      description: Exon inclusion ratio denominators from CCLE RNAseq 2018-09-29.
-      url: ../CCLE_2019/supplemental/CCLE_RNAseq_ExonUsageRatio_denominatorCnt_20180929.gct.gz
+      description: Exon inclusion ratio denominators from CCLE RNAseq 2018-09-29 (1019 cell lines).
+      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_ExonUsageRatio_denominatorCnt_20180929.gct.gz&bucket=depmap-external-downloads
