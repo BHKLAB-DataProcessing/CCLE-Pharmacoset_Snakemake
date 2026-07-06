@@ -3,10 +3,21 @@ name = "ccle_snakemake"
 version = "0.2.0"
 description = "Add a short description here"
 authors = ["Jermiah <jermiahjoseph98@gmail.com>", "Michael <michaelcao-anh.tran@uhn.ca>"]
-channels = ["conda-forge", "bioconda", "main", "r", "msys2"]
-platforms = ["linux-64"]
+channels = ["conda-forge", "bioconda"]
+platforms = [{ platform = "linux-64", linux = "5.4.203" }, "osx-arm64"]
+
+[activation]
+env.RAWDATA = "${PIXI_PROJECT_ROOT}/rawdata"
+env.PROCDATA = "${PIXI_PROJECT_ROOT}/procdata"
+env.METADATA = "${PIXI_PROJECT_ROOT}/metadata"
+env.RESULTS = "${PIXI_PROJECT_ROOT}/results"
+env.LOGS = "${PIXI_PROJECT_ROOT}/logs"
+env.R_MAX_VSIZE = "100Gb"
 
 [tasks]
+setup = { cmd = "Rscript workflow/scripts/setup.R", description = "Install local R packages into the active pixi environment." }
+dryrun-osx = { cmd = "snakemake --profile workflow/profiles/osx-arm64 --dryrun", description = "Dry-run the pipeline on macOS ARM without Conda or Singularity." }
+pipeline-osx = { cmd = "snakemake --profile workflow/profiles/osx-arm64", description = "Run the pipeline on macOS ARM using the active pixi R environment." }
 rulegraph = "snakemake --rulegraph | dot -Tsvg > resources/rulegraph.svg"
 dag = "snakemake -F --dag | dot -Tsvg > resources/dag.svg"
 filegraph = "snakemake --filegraph | dot -Tsvg > resources/filegraph.svg"
@@ -18,21 +29,27 @@ depends-on = [
   { task = "filegraph", environment = "graphs" },
 ]
 
-[system-requirements]
-linux='5.4.203'
-
 [dependencies]
+python = ">=3.11,<3.12"
+snakemake = "==7.32.4"
 
 [feature.graphs.dependencies]
-snakemake = "==7.32.4"
 graphviz = "*"
 
 [environments]
 graphs = ["graphs"]
 
 [target.linux-64.dependencies]
-snakemake = "==7.32.4"
 singularity = "*"
 python-kubernetes = "*"
 kubernetes = "*"
 mamba = "*"
+
+[target.osx-arm64.dependencies]
+r-base = ">=4.4,<4.5"
+"r-biocmanager" = ">=1.30,<2"
+"r-curl" = ">=5,<7"
+"r-data.table" = ">=1.14,<2"
+"r-jsonlite" = ">=1.8,<2"
+"r-remotes" = ">=2.5,<3"
+"r-r.utils" = ">=2.12,<3"
