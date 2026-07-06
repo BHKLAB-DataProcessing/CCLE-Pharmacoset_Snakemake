@@ -30,9 +30,13 @@ rule download_MassSpec:
         mkdir -p $(dirname {output.quant}) $(dirname {log})
         {{
           echo "[download] Fetching {params.quant_url}"
-          curl -L "{params.quant_url}" -o "{output.quant}"
+          python3 workflow/scripts/download_resource.py --expect-gzip \
+            --source "{params.quant_url}" \
+            --output "{output.quant}"
           echo "[download] Fetching {params.sample_info_url}"
-          curl -L "{params.sample_info_url}" -o "{output.sample_info}"
+          python3 workflow/scripts/download_resource.py \
+            --source "{params.sample_info_url}" \
+            --output "{output.sample_info}"
         }} > {log} 2>&1
         """
 

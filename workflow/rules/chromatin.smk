@@ -24,12 +24,9 @@ rule download_Chromatin:
         r'''
         set -euo pipefail
         mkdir -p $(dirname {output.chromatin}) $(dirname {log})
-        url="{params.url}"
-        if [[ "$url" =~ ^https?:// ]]; then
-            curl -L "$url" -o "{output.chromatin}"
-        else
-            cp "$url" "{output.chromatin}"
-        fi
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.url}" \
+          --output "{output.chromatin}" > {log} 2>&1
         '''
 
 

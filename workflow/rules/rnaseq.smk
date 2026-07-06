@@ -39,13 +39,21 @@ rule download_RNASEQ:
         mkdir -p $(dirname {output.genes_tpm}) $(dirname {log})
         {{
           echo "[download] Fetching genes TPM {params.genes_rsem_url}"
-          curl -L "{params.genes_rsem_url}" | gunzip -c > "{output.genes_tpm}"
+          python3 workflow/scripts/download_resource.py --decompress-gzip \
+            --source "{params.genes_rsem_url}" \
+            --output "{output.genes_tpm}"
           echo "[download] Fetching transcripts TPM {params.transcripts_rsem_url}"
-          curl -L "{params.transcripts_rsem_url}" | gunzip -c > "{output.transcripts_tpm}"
+          python3 workflow/scripts/download_resource.py --decompress-gzip \
+            --source "{params.transcripts_rsem_url}" \
+            --output "{output.transcripts_tpm}"
           echo "[download] Fetching genes RPKM {params.genes_rpkm_url}"
-          curl -L "{params.genes_rpkm_url}" -o "{output.genes_rpkm}"
+          python3 workflow/scripts/download_resource.py --expect-gzip \
+            --source "{params.genes_rpkm_url}" \
+            --output "{output.genes_rpkm}"
           echo "[download] Fetching genes counts {params.genes_counts_url}"
-          curl -L "{params.genes_counts_url}" -o "{output.genes_counts}"
+          python3 workflow/scripts/download_resource.py --expect-gzip \
+            --source "{params.genes_counts_url}" \
+            --output "{output.genes_counts}"
         }} > {log} 2>&1
         """
 

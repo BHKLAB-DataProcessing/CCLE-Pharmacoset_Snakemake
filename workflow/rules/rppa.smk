@@ -51,15 +51,20 @@ rule download_RPPA:
         {{
           echo "[download] Fetching {params.url}"
           echo "[download] Saving to $(basename "$tmp_file") from {params.url}"
-          curl -L "{params.url}" -o "$tmp_file"
           case "{params.compression}" in
             zip)
+              python3 workflow/scripts/download_resource.py \
+                --source "{params.url}" \
+                --output "$tmp_file" \
+                --expect-zip
               echo "[extract] Unpacking {params.archive_member}"
               unzip -p "$tmp_file" "{params.archive_member}" > "{output.matrix}"
               rm -f "$tmp_file"
               ;;
             none|"")
-              mv "$tmp_file" "{output.matrix}"
+              python3 workflow/scripts/download_resource.py \
+                --source "{params.url}" \
+                --output "{output.matrix}"
               ;;
             *)
               echo "Unsupported compression type: {params.compression}" >&2

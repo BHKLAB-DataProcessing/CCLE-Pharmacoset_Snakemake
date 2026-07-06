@@ -33,7 +33,9 @@ rule download_methylation_rrbs:
         mkdir -p $(dirname {output.data}) $(dirname {log})
         {{
           echo "[download] Fetching {params.url}"
-          curl -L "{params.url}" | gunzip -c > "{output.data}"
+          python3 workflow/scripts/download_resource.py --decompress-gzip \
+            --source "{params.url}" \
+            --output "{output.data}"
         }} > {log} 2>&1
         """
 

@@ -16,7 +16,7 @@ containers:
 
 # Configure Data URLs
 metadata:
-  sampleAnnotation: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCell_lines_annotations_20181226.txt&bucket=depmap-external-downloads
+  sampleAnnotation: https://data.broadinstitute.org/ccle/Cell_lines_annotations_20181226.txt
   treatmentAnnotation: https://data.broadinstitute.org/ccle_legacy_data/pharmacological_profiling/CCLE_NP24.2009_profiling_2012.02.20.csv
   referenceGenome:
     description: 
@@ -25,7 +25,7 @@ metadata:
     species: homo_sapiens
     release: 19
     build: GRCh37
-    url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2Fgencode.v19.genes.v7_model.patched_contigs.gtf.gz&bucket=depmap-external-downloads
+    url: https://data.broadinstitute.org/ccle/gencode.v19.genes.v7_model.patched_contigs.gtf.gz
 
 treatmentResponse:
   date: '2015-02-24'
@@ -40,16 +40,16 @@ molecularProfiles:
   rnaseq:
     rsem-genes_tpm: 
       description: RNA-seq gene expression data (RSEM gene TPM; CCLE 2018-09-29 release). TPM values are log2 transformed.
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_genes_tpm_20180929.txt.gz
     rsem-transcripts_tpm: 
       description: RNA-seq transcript expression data (RSEM transcript TPM; CCLE 2018-09-29 release).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_rsem_transcripts_tpm_20180929.txt.gz&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_rsem_transcripts_tpm_20180929.txt.gz
     genes_counts: 
       description: RNA-seq gene expression read counts (GCT; CCLE 2018-09-29 release).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_genes_counts_20180929.gct.gz&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_counts_20180929.gct.gz
     genes_rpkm:
       description: RNA-seq gene expression RPKM values (GCT; CCLE 2018-09-29 release).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_genes_rpkm_20180929.gct.gz&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_genes_rpkm_20180929.gct.gz
 
   mutation:
     somatic_mutations:
@@ -80,41 +80,41 @@ molecularProfiles:
     global_mrm:
       description: Global histone post-translational modification profiling measured by MRM (CCLE 2018-11-30 release).
       release: '2018-11-30'
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_GlobalChromatinProfiling_20181130.csv&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_GlobalChromatinProfiling_20181130.csv
 
   fusion:
     filtered:
       description: STAR-Fusion filtered fusion calls for 1019 cell lines (CCLE 2018-11-30 release).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_Fusions_20181130.txt&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_Fusions_20181130.txt
     unfiltered:
       description: STAR-Fusion unfiltered fusion calls (CCLE 2018-11-30 release).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_Fusions_unfiltered_20181130.txt&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_Fusions_unfiltered_20181130.txt
     preferred: filtered
 
   epigenetics:
     methylation_rrbs:
       tss_1kb:
         description: RRBS promoter methylation aggregated over 1kb windows upstream of transcription start sites.
-        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_TSS1kb_20181022.txt.gz&bucket=depmap-external-downloads
+        url: https://data.broadinstitute.org/ccle/CCLE_RRBS_TSS1kb_20181022.txt.gz
       tss_cpg_clusters:
         description: RRBS promoter methylation summarized over CpG clusters proximal to TSS regions.
-        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_tss_CpG_clusters_20181022.txt.gz&bucket=depmap-external-downloads
+        url: https://data.broadinstitute.org/ccle/CCLE_RRBS_tss_CpG_clusters_20181022.txt.gz
       cgi_cpg_clusters:
         description: RRBS CpG island methylation summarized across CpG clusters.
-        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_cgi_CpG_clusters_20181119.txt.gz&bucket=depmap-external-downloads
+        url: https://data.broadinstitute.org/ccle/CCLE_RRBS_cgi_CpG_clusters_20181119.txt.gz
       enhancer_cpg_clusters:
         description: RRBS methylation across CpG clusters overlapping VISTA enhancer annotations.
-        url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RRBS_enh_CpG_clusters_20181119.txt.gz&bucket=depmap-external-downloads
+        url: https://data.broadinstitute.org/ccle/CCLE_RRBS_enh_CpG_clusters_20181119.txt.gz
 
   metabolomics:
     ccle_2019:
       description: CCLE metabolomics profiles (clean, imputed) quantified via LC-MS across 225 metabolites in 928 cell lines.
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_metabolomics_20190502.csv&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_metabolomics_20190502.csv
 
   mirna:
     mirna_gct:
       description: CCLE miRNA expression (GCT) release 2018-11-03; same as CCLE_miRNA_20180525.gct.
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_miRNA_20181103.gct&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_miRNA_20181103.gct
     mirna_mimat:
       description: CCLE miRNA expression (MIMAT CSV) release 2018-11-03; IDs mapped to MIMAT IDs.
       url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fmirna-573f.3%2FCCLE_miRNA_MIMAT.csv&bucket=depmap-external-downloads
@@ -122,7 +122,7 @@ molecularProfiles:
   exon:
     exon_usage_ratio:
       description: Exon inclusion ratios (PSI) from CCLE RNAseq 2018-09-29 (1019 cell lines).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_ExonUsageRatio_20180929.gct.gz&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_ExonUsageRatio_20180929.gct.gz
     exon_usage_denominator:
       description: Exon inclusion ratio denominators from CCLE RNAseq 2018-09-29 (1019 cell lines).
-      url: https://depmap.org/portal/download/api/download?file_name=ccle%2Fccle_2019%2FCCLE_RNAseq_ExonUsageRatio_denominatorCnt_20180929.gct.gz&bucket=depmap-external-downloads
+      url: https://data.broadinstitute.org/ccle/CCLE_RNAseq_ExonUsageRatio_denominatorCnt_20180929.gct.gz

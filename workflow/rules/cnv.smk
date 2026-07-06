@@ -30,18 +30,14 @@ rule downloadCNV:
         set -euo pipefail
         mkdir -p $(dirname {output.cnv})
         url="{params.url}"
-        if [[ "$url" =~ ^https?:// ]]; then
-            if [[ "$url" == *.gz ]]; then
-                curl -L "$url" | gunzip -c > "{output.cnv}"
-            else
-                curl -L "$url" -o "{output.cnv}"
-            fi
+        if [[ "$url" == *.gz ]]; then
+            python3 workflow/scripts/download_resource.py --decompress-gzip \
+              --source "$url" \
+              --output "{output.cnv}"
         else
-            if [[ "$url" == *.gz ]]; then
-                gunzip -c "$url" > "{output.cnv}"
-            else
-                cp "$url" "{output.cnv}"
-            fi
+            python3 workflow/scripts/download_resource.py \
+              --source "$url" \
+              --output "{output.cnv}"
         fi
         """
 

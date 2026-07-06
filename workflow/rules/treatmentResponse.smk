@@ -47,6 +47,10 @@ rule download_treatmentResponse:
         """
         set -euo pipefail
         mkdir -p $(dirname {output.rawdata})
-        curl -L "{params.rawdata_url}" -o "{output.rawdata}";
-        curl -L "{params.processed_url}" -o "{output.processed}";
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.rawdata_url}" \
+          --output "{output.rawdata}"
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.processed_url}" \
+          --output "{output.processed}"
         """

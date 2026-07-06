@@ -27,16 +27,14 @@ rule download_exon_usage:
         r'''
         set -euo pipefail
         mkdir -p $(dirname {output.ratio}) $(dirname {log})
-        if [[ "{params.ratio_url}" =~ ^https?:// ]]; then
-          curl -L "{params.ratio_url}" | gunzip -c > "{output.ratio}"
-        else
-          gunzip -c "{params.ratio_url}" > "{output.ratio}"
-        fi
-        if [[ "{params.denom_url}" =~ ^https?:// ]]; then
-          curl -L "{params.denom_url}" | gunzip -c > "{output.denom}"
-        else
-          gunzip -c "{params.denom_url}" > "{output.denom}"
-        fi
+        {{
+          python3 workflow/scripts/download_resource.py --decompress-gzip \
+            --source "{params.ratio_url}" \
+            --output "{output.ratio}"
+          python3 workflow/scripts/download_resource.py --decompress-gzip \
+            --source "{params.denom_url}" \
+            --output "{output.denom}"
+        }} > {log} 2>&1
         '''
 
 

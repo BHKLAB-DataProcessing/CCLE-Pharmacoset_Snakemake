@@ -24,11 +24,9 @@ rule download_CNV_segments:
         r'''
         set -euo pipefail
         mkdir -p $(dirname {output.seg}) $(dirname {log})
-        if [[ "{params.url}" =~ ^https?:// ]]; then
-          curl -L "{params.url}" -o "{output.seg}"
-        else
-          cp "{params.url}" "{output.seg}"
-        fi
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.url}" \
+          --output "{output.seg}" > {log} 2>&1
         '''
 
 

@@ -27,16 +27,14 @@ rule download_miRNA:
         r'''
         set -euo pipefail
         mkdir -p $(dirname {output.gct}) $(dirname {log})
-        if [[ "{params.gct_url}" =~ ^https?:// ]]; then
-          curl -L "{params.gct_url}" -o "{output.gct}"
-        else
-          cp "{params.gct_url}" "{output.gct}"
-        fi
-        if [[ "{params.mimat_url}" =~ ^https?:// ]]; then
-          curl -L "{params.mimat_url}" -o "{output.mimat}"
-        else
-          cp "{params.mimat_url}" "{output.mimat}"
-        fi
+        {{
+          python3 workflow/scripts/download_resource.py \
+            --source "{params.gct_url}" \
+            --output "{output.gct}"
+          python3 workflow/scripts/download_resource.py \
+            --source "{params.mimat_url}" \
+            --output "{output.mimat}"
+        }} > {log} 2>&1
         '''
 
 
