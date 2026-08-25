@@ -402,7 +402,7 @@ if (is.null(mut_mat)) {
 ```{r cn-associations, fig.height=5}
 cn_mat <- tryCatch(
   SummarizedExperiment::assay(MultiAssayExperiment::experiments(assay_mae)[[
-    "cnv.genes"
+    "cnv.gene"
   ]]),
   error = function(e) NULL
 )

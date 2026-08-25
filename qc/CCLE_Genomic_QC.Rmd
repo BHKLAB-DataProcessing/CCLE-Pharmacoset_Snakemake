@@ -64,7 +64,7 @@ pset <- readRDS(pset_path)
 assay_mae <- PharmacoGx::molecularProfiles(pset)
 
 mut_se <- MultiAssayExperiment::experiments(assay_mae)[["mutation.gene_binary"]]
-cnv_se <- MultiAssayExperiment::experiments(assay_mae)[["cnv.gene_log2"]]
+cnv_se <- MultiAssayExperiment::experiments(assay_mae)[["cnv.gene"]]
 
 mut_mat <- SummarizedExperiment::assay(mut_se, "exprs")
 cnv_mat <- SummarizedExperiment::assay(cnv_se, "exprs")
