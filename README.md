@@ -1,6 +1,6 @@
-# This is the repository for the CCLE pipeline
+# CCLE PSet pipeline
 
-This pipeline is considered `End-to-End` and will take you from downloading the raw data needed to a fully annotated dataset.
+End-to-end pipeline from downloading the raw data needed to fully annotated pharmacoset.
 
 ## STATUS REPORT
 
