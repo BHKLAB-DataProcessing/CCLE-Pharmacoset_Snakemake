@@ -77,7 +77,7 @@ rename_map <- c(
   "transcripts_tpm" = "rnaseq.transcript_tpm",
   "genes_counts" = "rnaseq.gene_counts",
   "genes_rpkm" = "rnaseq.gene_rpkm",
-  "genes" = "cnv.gene_log2",
+  "genes" = "cnv.gene",
   "genes.1" = "mutation.gene_binary",
   "proteomics" = "proteomics.rppa",
   "proteomics.1" = "proteomics.massspec_intensity",
