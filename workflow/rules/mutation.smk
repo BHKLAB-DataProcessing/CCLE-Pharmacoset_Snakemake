@@ -24,7 +24,9 @@ rule downloadMutation:
         """
         set -euo pipefail
         mkdir -p $(dirname {output.somatic})
-        curl -L "{params.somatic_url}" -o "{output.somatic}"
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.somatic_url}" \
+          --output "{output.somatic}"
         """
 
 ###############################################################################

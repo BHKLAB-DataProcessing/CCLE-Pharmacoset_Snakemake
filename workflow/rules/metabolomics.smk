@@ -26,7 +26,9 @@ rule download_Metabolomics:
         mkdir -p $(dirname {output.data}) $(dirname {log})
         {{
           echo "[download] Fetching {params.url}"
-          curl -L "{params.url}" -o "{output.data}"
+          python3 workflow/scripts/download_resource.py \
+            --source "{params.url}" \
+            --output "{output.data}"
         }} > {log} 2>&1
         """
 

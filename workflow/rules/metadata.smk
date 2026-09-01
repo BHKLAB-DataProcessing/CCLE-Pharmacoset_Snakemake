@@ -26,7 +26,9 @@ rule downloadSampleMetadata:
         """
         set -euo pipefail
         mkdir -p $(dirname {output.sampleMetadata})
-        curl -L "{params.url}" -o "{output.sampleMetadata}"
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.url}" \
+          --output "{output.sampleMetadata}"
         """
 
 rule downloadTreatmentMetadata:
@@ -38,7 +40,9 @@ rule downloadTreatmentMetadata:
         """
         set -euo pipefail
         mkdir -p $(dirname {output.treatmentAnnotation})
-        curl -L "{params.url}" -o "{output.treatmentAnnotation}"
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.url}" \
+          --output "{output.treatmentAnnotation}"
         """
 
 rule preprocessMetadata:
@@ -64,7 +68,10 @@ rule downloadGenomeFiles:
         """
         set -euo pipefail
         mkdir -p $(dirname {output.CCLE_GENCODE})
-        curl -L "{params.url}" -o "{output.CCLE_GENCODE}"
+        python3 workflow/scripts/download_resource.py \
+          --source "{params.url}" \
+          --output "{output.CCLE_GENCODE}" \
+          --expect-gzip
         """
 
 ################################################################################################

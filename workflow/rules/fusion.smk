@@ -27,18 +27,14 @@ rule download_Fusion:
         r'''
         set -euo pipefail
         mkdir -p $(dirname {output.filtered}) $(dirname {log})
-        url_f="{params.filtered_url}"; out_f="{output.filtered}"
-        if [[ "$url_f" =~ ^https?:// ]]; then
-            curl -L "$url_f" -o "$out_f"
-        else
-            cp "$url_f" "$out_f"
-        fi
-        url_u="{params.unfiltered_url}"; out_u="{output.unfiltered}"
-        if [[ "$url_u" =~ ^https?:// ]]; then
-            curl -L "$url_u" -o "$out_u"
-        else
-            cp "$url_u" "$out_u"
-        fi
+        {{
+          python3 workflow/scripts/download_resource.py \
+            --source "{params.filtered_url}" \
+            --output "{output.filtered}"
+          python3 workflow/scripts/download_resource.py \
+            --source "{params.unfiltered_url}" \
+            --output "{output.unfiltered}"
+        }} > {log} 2>&1
         '''
 
 
